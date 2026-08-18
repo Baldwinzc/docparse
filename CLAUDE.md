@@ -53,6 +53,7 @@ git worktree add -b feat/12-pdf-parser ../docparse-12-pdf-parser origin/main
 - PR 标题先对齐再创建。
 - 描述必须包含 `Closes #编号`。
 - 提交作者用 `1018067278@qq.com`，不加 Co-Authored-By Claude。
+- 提交说明、PR / Issue 正文和评论里**严禁**出现 `Generated with Claude Code`、机器人标记、Claude / Anthropic 署名或任何 AI 生成声明。
 - push / 建 PR 前先确认。
 - 本仓库是个人仓：**CI 绿且确认后合并**。不要直接推 main。
 
