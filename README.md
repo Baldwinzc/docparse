@@ -36,6 +36,7 @@ python -m docparse.cli parse path/to/file.zip
 - [流程图](docs/flow.html)（浏览器用 `file://` 打开本地文件）
 - [设计文档](docs/design.md)
 - [模块地图](docs/modules.md)（后期按模块拆 Issue）
+- [云模型调研](docs/model-survey.md)（价格均附来源链接）
 - [字段 Schema 占位](docs/field-schema.md)
 - [持久化预留](docs/persistence.md)
 - [开发规范](CLAUDE.md)
