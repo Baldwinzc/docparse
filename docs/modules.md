@@ -38,6 +38,8 @@ docparse/
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
 | 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 | 换供应商只改这里 |
 
+云 API 分层、报价来源和第一期组合见 [model-survey.md](model-survey.md)（#1）。
+
 ## 推荐拆 Issue 的顺序
 
 需求方 case 和字段清单到位后，按这个顺序拆，一次一个 worktree：
