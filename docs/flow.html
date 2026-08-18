@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>单据解析流程</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@600;700&display=swap">
+
+<style>
+  :root {
+    --paper: #e7eeea;
+    --ink: #182226;
+    --muted: #4d5c58;
+    --line: #b6c4be;
+    --card: #f4f8f5;
+    --teal: #0b5f66;
+    --teal-soft: #d5e8e6;
+    --stamp: #b42318;
+    --stamp-soft: #f3d6d3;
+    --pass: #1f6b4a;
+    --pass-soft: #d5eadc;
+    --hold: #8a5a12;
+    --hold-soft: #f3e4c8;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    --serif: "Noto Serif SC", "Songti SC", serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12181a;
+      --ink: #e6eeea;
+      --muted: #9aaba5;
+      --line: #2c3a36;
+      --card: #1a2224;
+      --teal: #7ec8c6;
+      --teal-soft: #1b3334;
+      --stamp: #f0a39c;
+      --stamp-soft: #3a2220;
+      --pass: #8fd0ad;
+      --pass-soft: #1c3228;
+      --hold: #e2c07a;
+      --hold-soft: #332814;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #12181a;
+    --ink: #e6eeea;
+    --muted: #9aaba5;
+    --line: #2c3a36;
+    --card: #1a2224;
+    --teal: #7ec8c6;
+    --teal-soft: #1b3334;
+    --stamp: #f0a39c;
+    --stamp-soft: #3a2220;
+    --pass: #8fd0ad;
+    --pass-soft: #1c3228;
+    --hold: #e2c07a;
+    --hold-soft: #332814;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  body {
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  .wrap {
+    width: min(1080px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 48px 0 80px;
+  }
+
+  header {
+    display: grid;
+    gap: 12px;
+    max-width: 42rem;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--teal);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 700;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .lead {
+    margin: 0;
+    color: var(--muted);
+    max-width: 38rem;
+  }
+
+  .locks {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 28px 0 8px;
+  }
+
+  .lock {
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    display: grid;
+    gap: 4px;
+  }
+
+  .lock b {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .lock span {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  section {
+    padding: 40px 0 8px;
+    display: grid;
+    gap: 16px;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.55rem;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .chip.pass { background: var(--pass-soft); color: var(--pass); border-color: transparent; }
+  .chip.hold { background: var(--hold-soft); color: var(--hold); border-color: transparent; }
+  .chip.api { background: var(--teal-soft); color: var(--teal); border-color: transparent; }
+  .chip.stop { background: var(--stamp-soft); color: var(--stamp); border-color: transparent; }
+
+  p.note {
+    margin: 0;
+    color: var(--muted);
+    max-width: 46rem;
+  }
+
+  .diagram {
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 20px 12px;
+    overflow-x: auto;
+  }
+
+  .mermaid {
+    margin: 0 auto;
+    min-width: 720px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .legend i {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    vertical-align: -1px;
+  }
+
+  .dot-pass { background: var(--pass); }
+  .dot-hold { background: var(--hold); }
+  .dot-api { background: var(--teal); }
+  .dot-stop { background: var(--stamp); }
+
+  .ask {
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 14px;
+  }
+
+  .ask h2 { font-size: 1.35rem; }
+
+  ol {
+    margin: 0;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 10px;
+    max-width: 46rem;
+  }
+
+  li strong { font-weight: 600; }
+
+  @media (max-width: 800px) {
+    .locks { grid-template-columns: 1fr 1fr; }
+    .wrap { width: min(1080px, calc(100% - 24px)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">DocParse · 框架阶段</div>
+    <h1>单据解析流程</h1>
+    <p class="lead">先对齐这三张图，再写代码、再建仓。主链路是固定流水线；模型只作为某一步里的云 API；持久化先留口子。</p>
+  </header>
+
+  <div class="locks">
+    <div class="lock"><b>不是 Agent</b><span>步骤顺序写死，不引入 LangChain / LangGraph</span></div>
+    <div class="lock"><b>只走云 API</b><span>不部署本地 LLM / VLM / OCR 大模型</span></div>
+    <div class="lock"><b>持久化预留</b><span>本阶段内存实现，接口按 Postgres + 对象存储留</span></div>
+    <div class="lock"><b>字段仍占位</b><span>等需求方给 PDF / 压缩包和字段清单</span></div>
+  </div>
+
+  <section>
+    <h2>主链路</h2>
+    <div class="meta">
+      <span class="chip">同步视角</span>
+      <span class="chip pass">自动通过</span>
+      <span class="chip hold">待复核</span>
+    </div>
+    <p class="note">一份上传从接入走到结构化结果。压缩包先安全拆开，再和单文件走同一条解析链路。没有证据的字段不能自动通过。</p>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart TD
+    A[用户上传<br/>ZIP / PDF / Excel / 图片] --> B[接入与安全检查<br/>大小 · MIME · 空文件]
+    B --> C{是压缩包?}
+    C -->|是| D[安全解压<br/>防穿越 · 限层数 / 数量 / 体积]
+    C -->|否| E[单文件直接进入]
+    D --> E[按文件类型解析]
+    E --> F[统一文档 IR]
+    F --> G[文档分类<br/>报关单 / 发票 / 未知]
+    G --> H[字段抽取]
+    H --> I[字段标准化与校验]
+    I --> J[包级跨文件对账]
+    J --> K{置信度 / 冲突}
+    K -->|高且无冲突| L[自动通过]
+    K -->|中低 · 冲突 · 缺证据| M[待复核]
+    L --> N[结构化结果]
+    M --> N
+    N --> O[持久化接口<br/>当前内存 · 后期 Postgres + 对象存储]
+
+    classDef box fill:#f4f8f5,stroke:#0b5f66,color:#182226
+    classDef decision fill:#d5e8e6,stroke:#0b5f66,color:#182226
+    classDef pass fill:#d5eadc,stroke:#1f6b4a,color:#182226
+    classDef hold fill:#f3e4c8,stroke:#8a5a12,color:#182226
+    classDef store fill:#e7eeea,stroke:#4d5c58,color:#182226
+    class A,B,D,E,F,G,H,I,J,N box
+    class C,K decision
+    class L pass
+    class M hold
+    class O store
+      </pre>
+    </div>
+    <div class="legend">
+      <span><i class="dot-pass"></i>自动通过</span>
+      <span><i class="dot-hold"></i>待复核</span>
+      <span><i class="dot-api"></i>判断节点</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>字段抽取</h2>
+    <div class="meta">
+      <span class="chip">主链路 H 的展开</span>
+      <span class="chip api">规则优先</span>
+      <span class="chip api">LLM 兜底</span>
+    </div>
+    <p class="note">按字段表逐个处理。规则能抽到就不调模型；只有字段允许 LLM、且已配置 API Key 时才走云接口。抽到的值必须带回原文证据。</p>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart TD
+    H0[按字段表逐个字段] --> H1{规则能抽到?}
+    H1 -->|是| H2[锚点 / 表头 / 正则]
+    H1 -->|否| H3{字段允许 LLM?}
+    H3 -->|是，且已配 API Key| H4[云 API 结构化抽取]
+    H3 -->|否，或未配 Key| H5[标记 missing]
+    H2 --> H6[写入值 + 证据]
+    H4 --> H6
+    H5 --> H7[进入校验]
+    H6 --> H7[格式 · 必填 · 证据检查]
+
+    classDef box fill:#f4f8f5,stroke:#0b5f66,color:#182226
+    classDef decision fill:#d5e8e6,stroke:#0b5f66,color:#182226
+    classDef api fill:#d5e8e6,stroke:#0b5f66,color:#182226
+    classDef miss fill:#f3d6d3,stroke:#b42318,color:#182226
+    class H0,H2,H6,H7 box
+    class H1,H3 decision
+    class H4 api
+    class H5 miss
+      </pre>
+    </div>
+    <div class="legend">
+      <span><i class="dot-api"></i>云 API</span>
+      <span><i class="dot-stop"></i>不编造，标缺失</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>任务时序</h2>
+    <div class="meta">
+      <span class="chip">异步视角</span>
+      <span class="chip">JobStore / FileStore</span>
+    </div>
+    <p class="note">调用方拿到 job_id 后查询结果。当前 API 默认同步跑完再返回；后台异步是同一条流水线，只是返回时机不同。</p>
+    <div class="diagram">
+      <pre class="mermaid">
+sequenceDiagram
+    actor U as 调用方
+    participant API as FastAPI
+    participant Jobs as JobStore
+    participant Files as FileStore
+    participant P as 固定流水线
+    participant LLM as 云 LLM API
+
+    U->>API: POST /v1/jobs
+    API->>Files: 存原始文件
+    API->>Jobs: 创建 queued
+    API-->>U: job_id
+    API->>P: run
+    P->>P: unpack / parse / classify / extract / validate
+    opt 规则不够
+        P->>LLM: 局部文本 + JSON Schema
+        LLM-->>P: value + quote
+    end
+    P->>Jobs: succeeded / needs_review / failed
+    U->>API: GET /v1/jobs/{id}
+    API-->>U: 状态 + 字段 + 证据
+      </pre>
+    </div>
+  </section>
+
+  <div class="ask">
+    <h2>对齐后再往下</h2>
+    <ol>
+      <li><strong>返回时机：</strong>上传后同步跑完再返回，还是先返回 job_id、后台再跑？图上两种都成立，API 现在默认同步。</li>
+      <li><strong>多文件字段：</strong>压缩包里先全部解析再统一抽字段（当前图），还是每份文件单独出一套字段再合并？</li>
+      <li><strong>待复核：</strong>本阶段只打状态，还是也要画人工复核页？</li>
+    </ol>
+  </div>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: dark ? "dark" : "neutral",
+    securityLevel: "strict",
+    flowchart: { htmlLabels: true, curve: "basis" },
+  });
+</script>
+</body>
+</html>

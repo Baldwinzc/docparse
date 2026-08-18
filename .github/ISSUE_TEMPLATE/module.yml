@@ -1,0 +1,40 @@
+name: 模块实现
+description: 实现或补齐一个流水线模块（一事一 Issue）
+title: "[模块] "
+labels: ["module"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题
+      description: 这个模块现在缺什么，为什么现在做。
+      placeholder: 例如：PDF 文本层尚未抽出坐标，报关单号抽不到。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 只写本次要改的路径。对照 docs/modules.md。
+      placeholder: |
+        改：src/docparse/adapters/parsers/pdf.py
+        不改：pipeline 编排、字段 YAML
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 可勾选、可验证。
+      placeholder: |
+        - [ ] 给定样本能抽出文本块和页码
+        - [ ] 单测覆盖正常件和空页
+        - [ ] ruff / pytest 通过
+    validations:
+      required: true
+  - type: input
+    id: worktree
+    attributes:
+      label: Worktree / 分支（开发时填）
+      description: 一个 Issue 对应一个 worktree。
+      placeholder: ../docparse-12-pdf-parser  /  feat/12-pdf-parser
