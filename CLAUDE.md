@@ -9,6 +9,7 @@
 - 持久化本阶段不实现，只保留 `JobStore` / `FileStore` 接口。
 - 流程图以 [docs/flow.html](docs/flow.html) 为准。
 - 云 API 选型与报价来源以 [docs/model-survey.md](docs/model-survey.md) 为准；实现前打开文档里的官方链接再核一次价。
+- OCR 引擎对照（开源参数量/显存 vs 闭源价格）以 [docs/ocr-survey.md](docs/ocr-survey.md) 为准。第一期扫描件走 OCR + 规则，VLM 非必须。
 
 ## 开发流程（必须）
 

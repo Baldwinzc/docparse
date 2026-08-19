@@ -1,6 +1,6 @@
 # 模块地图
 
-流程图见 [flow.html](flow.html)。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
+流程图见 [flow.html](flow.html)。OCR 引擎对照（开源显存 / 闭源价格）见 [ocr-survey.md](ocr-survey.md)（#7）。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
 
 ```text
 docparse/
