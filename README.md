@@ -51,7 +51,7 @@ flowchart TD
     H6 --> H7[格式 · 必填 · 证据检查]
 ```
 
-云 API 再拆三层，不要横向比「哪个大模型最强」。选型与报价见 [docs/model-survey.md](docs/model-survey.md)。
+云 API 再拆三层，不要横向比「哪个大模型最强」。链路分层与方舟/LAS 见 [docs/model-survey.md](docs/model-survey.md)。OCR 引擎本身（开源参数量/显存 vs 闭源价格）见 [docs/ocr-survey.md](docs/ocr-survey.md)。第一期扫描件走 **OCR + 规则**，VLM 非必须。
 
 ```mermaid
 flowchart LR

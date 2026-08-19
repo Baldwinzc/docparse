@@ -3,6 +3,7 @@
 对应 Issue：[#1](https://github.com/Baldwinzc/docparse/issues/1)
 流程图：[flow.html](flow.html)
 模块地图：[modules.md](modules.md)
+OCR 引擎对照（开源显存 / 闭源价格）：[ocr-survey.md](ocr-survey.md)
 
 > **阅读约定**
 >
