@@ -150,6 +150,7 @@ curl http://127.0.0.1:8088/health
 
 ```bash
 python -m docparse.cli parse path/to/file.zip
+python -m docparse.cli layout path/to/file.xlsx   # 只看键值和表，不做字段映射
 ```
 
 ## 文档

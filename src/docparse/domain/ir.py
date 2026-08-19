@@ -26,17 +26,46 @@ class Page(BaseModel):
     blocks: list[TextBlock] = Field(default_factory=list)
 
 
+class CellBorder(BaseModel):
+    left: bool = False
+    right: bool = False
+    top: bool = False
+    bottom: bool = False
+
+
 class Cell(BaseModel):
     address: str
     value: str
     raw_value: str | None = None
     row: int | None = None
     column: int | None = None
+    merge_range: str | None = None
+    formula: str | None = None
+    border: CellBorder | None = None
+
+
+class KeyValue(BaseModel):
+    """版面拆出的键值，还不是报关单字段。"""
+
+    key: str
+    value: str
+    key_cell: str
+    value_cell: str
+    strategy: str
+
+
+class Table(BaseModel):
+    header_row: int
+    headers: list[str] = Field(default_factory=list)
+    header_cells: list[str] = Field(default_factory=list)
+    rows: list[dict[str, str]] = Field(default_factory=list)
 
 
 class Sheet(BaseModel):
     name: str
     cells: list[Cell] = Field(default_factory=list)
+    key_values: list[KeyValue] = Field(default_factory=list)
+    tables: list[Table] = Field(default_factory=list)
 
 
 class Evidence(BaseModel):

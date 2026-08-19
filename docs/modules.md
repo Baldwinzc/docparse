@@ -28,8 +28,8 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；PDF/Excel 需可选依赖；图片未接 OCR | 分类型各开 Issue |
-| 统一文档 IR | `domain/ir.py` | 已定形状 | 非必要不改 |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/表头（#9）；PDF 需可选依赖；图片未接 OCR | PDF / 国光冒号加强 / 扫描件 OCR |
+| 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 | 按真实样本补规则 / LLM |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 | 等字段清单和 case |
 | 标准化与校验 | `extraction/validate.py` | 格式 / 必填 / 证据 | 金额、日期、跨字段 |
@@ -46,7 +46,7 @@ docparse/
 
 1. 字段表按真实清单改 `schema/fields.yaml`
 2. PDF 文本层解析（`parsers/pdf.py`）
-3. Excel 解析（`parsers/excel.py`）
+3. Excel 框表解析（`parsers/excel.py` + `layout.py`，#9）
 4. 报关单规则抽取（锚点 / 表头）
 5. LLM API 兜底（提示词 + Schema）
 6. 图片 / 扫描件云 OCR 或 VLM
@@ -55,6 +55,8 @@ docparse/
 9. 人工复核页（如需要）
 
 ## 模块接口约定
+
+Excel 框表拆分（#9）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。本地对眼用 `python -m docparse.cli layout file.xlsx`。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 
