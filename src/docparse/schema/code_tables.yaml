@@ -1,0 +1,102 @@
+# 码表缩小夹具（Issue #14）
+# 名称 → code，精确匹配（只 strip）。未知返回空，不瞎填。
+# 客户原件「基础报关参数数据.xlsx」不进仓库；本文件只抄若干行。
+# 俗称（莲塘口岸、纸箱）不收，交 #27。
+#
+# 港口码写死：指运港 / 启运港走「港口代码」一张表，按中文名精确匹配。
+# HKG000 风格与六位特殊监管区共存于同一张表，不选边、不混进「海关口岸代码」。
+# 申报地 / 出境关走四位「海关口岸代码」。
+#
+# code 一律字符串：4 不补成 04；0110 保留前导零。
+
+version: 1
+match: exact
+
+# 客户参数表没有、#12 已引用的表。不编造。lookup 这些表名会报未知表。
+pending:
+  - name: 币制
+    used_by: [feeCurr, insurCurr, otherCurr, tradeCurr]
+    notes: 客户「基础报关参数数据.xlsx」无此 sheet。
+
+  - name: 报关单类型
+    used_by: [entryType]
+    notes: 客户参数表无此 sheet。
+
+  - name: 入境/离境口岸
+    used_by: [ciqEntyPortCode]
+    notes: CIQ 口岸，不是四位关区。客户参数表无此 sheet。半岛参考 477101，不编造。
+
+tables:
+  包装种类:
+    source_sheet: 包装种类
+    entries:
+      - {code: "22", name: 纸制或纤维板制盒/箱}
+      - {code: "99", name: 其他包装}
+
+  成交方式:
+    source_sheet: 成交方式
+    entries:
+      - {code: "1", name: CIF}
+      - {code: "2", name: "C&F"}
+      - {code: "3", name: FOB}
+
+  计量单位:
+    source_sheet: 计量单位
+    entries:
+      - {code: "008", name: 只}
+      - {code: "035", name: 千克}
+
+  监管方式:
+    source_sheet: 监管方式
+    entries:
+      - {code: "0110", name: 一般贸易}
+
+  运输方式:
+    source_sheet: 运输方式
+    entries:
+      - {code: "2", name: 水路运输}
+      - {code: "4", name: 公路运输}
+      - {code: "5", name: 航空运输}
+
+  征免性质:
+    source_sheet: 征免性质
+    entries:
+      - {code: "101", name: 一般征税}
+
+  国别:
+    source_sheet: 国别
+    entries:
+      - {code: CHN, name: 中国}
+      - {code: HKG, name: 中国香港}
+      - {code: DEU, name: 德国}
+      - {code: VNM, name: 越南}
+      - {code: USA, name: 美国}
+
+  国内地区:
+    source_sheet: 国内地区
+    entries:
+      - {code: "44039", name: 深圳其他}
+      - {code: "44139", name: 惠州其他}
+
+  海关口岸代码:
+    source_sheet: 海关口岸代码
+    notes: 四位关区。与「港口代码」分开加载。
+    entries:
+      - {code: "5341", name: 深惠州关}
+      - {code: "5352", name: 梅沙海关}
+      - {code: "5354", name: 莲塘海关}
+
+  征减免税方式:
+    source_sheet: 征减免税方式
+    entries:
+      - {code: "1", name: 照章征税}
+
+  港口代码:
+    source_sheet: 港口代码
+    notes: HKG000 风格与六位特殊监管区同一张表，按名称精确匹配。
+    entries:
+      - {code: HKG000, name: 中国香港}
+      - {code: HKG003, name: 香港（中国香港）}
+      - {code: DEU000, name: 德国}
+      - {code: VNM000, name: 越南}
+      - {code: "991101", name: 北京天竺综合保税区}

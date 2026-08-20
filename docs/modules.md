@@ -10,7 +10,7 @@ docparse/
 │   ├── cli.py                 本地命令行
 │   ├── config.py              环境变量
 │   ├── domain/                任务 / IR / 字段（稳定契约）
-│   ├── schema/                字段表 YAML + 版面词表 YAML
+│   ├── schema/                字段表 YAML + 版面词表 YAML + 码表夹具 YAML
 │   ├── pipeline/              固定步骤编排
 │   │   └── steps/             与主链路节点一一对应
 │   ├── extraction/            分类、抽字段、校验
@@ -57,6 +57,8 @@ docparse/
 ## 模块接口约定
 
 Excel 框表拆分（#9）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。BOX / TABLE 词表在 `schema/layout_vocab.yaml`（#13），`layout.py` 读文件不再维护 Python 常量。本地对眼用 `python -m docparse.cli layout file.xlsx`。
+
+名称转 code（#14）：`schema/code_tables.yaml` 缩小夹具 + `load_code_tables().lookup(表, 名称)`。精确匹配，未知返回空。海关口岸（四位）与港口代码分开。客户原件不入库。俗称别名交 #27。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 

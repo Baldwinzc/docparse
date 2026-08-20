@@ -1,21 +1,31 @@
 from docparse.schema.loader import (
+    CodeEntry,
+    CodeTable,
+    CodeTables,
     FieldSpec,
     LayoutVocab,
+    PendingTable,
     PortMapping,
     Schema,
     VocabAlias,
     VocabGroup,
+    load_code_tables,
     load_layout_vocab,
     load_schema,
 )
 
 __all__ = [
+    "CodeEntry",
+    "CodeTable",
+    "CodeTables",
     "FieldSpec",
     "LayoutVocab",
+    "PendingTable",
     "PortMapping",
     "Schema",
     "VocabAlias",
     "VocabGroup",
+    "load_code_tables",
     "load_layout_vocab",
     "load_schema",
 ]
