@@ -1,0 +1,364 @@
+# 版面词表（Issue #13）
+# BOX：去冒号后整词相等。TABLE：子串匹配（英文大小写不敏感），一行 ≥2 命中才当表头。
+# 抽出的 key / 列名仍是格子原文，不在这里映射到 fields.yaml。
+# 客户原件不进仓库；source 只引用样本路径，方便对照。
+#
+# 本期不收（后期子 Issue：商业单据英文 KV 别名 BOX）：
+#   Invoice No. 恒信装箱单!I4；Bill To 恒信装箱单!A7；
+#   DATE / 日期DATE 国光总箱单!A6；SELLER / BUYER 国光总箱单!A8/F8；
+#   CONTRACT NO. 国光总箱单!G7；SHIPPED PER 国光发票!A11；
+#   G.W. / N.W. 当框表键（样本里只当列名）。
+# 双行表头（中文行 + 英文翻译行并入 header）交 #15，不在本文件改刀法。
+# TABLE 不加「单位」（防误伤「生产销售单位」）。
+
+version: 1
+
+box:
+  - id: pre_entry_id
+    aliases:
+      - text: 预录入编号
+        source: 恒信草单 一般贸易出口!A2（格内带冒号）
+
+  - id: entry_id
+    aliases:
+      - text: 海关编号
+        source: 恒信草单 一般贸易出口!D2（格内带冒号）
+
+  - id: trade_party
+    aliases:
+      - text: 境内发货人
+        source: 恒信草单 一般贸易出口!A3
+      - text: 境内收货人
+        source: "#12 表头对照 进出口镜像；本张恒信出口草单无独立格"
+      - text: 境内收发货人
+        source: "#12 fields.yaml anchors；本张恒信出口草单无独立格"
+
+  - id: ie_port
+    aliases:
+      - text: 出境关别
+        source: 恒信草单 一般贸易出口!E3
+      - text: 进境关别
+        source: "#12 表头对照 出/进境关别；本张无独立格"
+      - text: 出口口岸
+        source: "#12 iePort anchors；本张写出境关别"
+      - text: 进口口岸
+        source: "#12 iePort anchors；本张无独立格"
+
+  - id: ie_date
+    aliases:
+      - text: 出口日期
+        source: 恒信草单 一般贸易出口!G3
+      - text: 进口日期
+        source: "layout.py 原常量 / #12 对照；本张出口草单无独立格"
+
+  - id: decl_date
+    aliases:
+      - text: 申报日期
+        source: 恒信草单 一般贸易出口!J3
+
+  - id: manual_no
+    aliases:
+      - text: 备案号
+        source: 恒信草单 一般贸易出口!N3
+
+  - id: overseas_party
+    aliases:
+      - text: 境外收货人
+        source: 恒信草单 一般贸易出口!A5
+      - text: 境外发货人
+        source: "#12 表头对照 境外收/发货人；本张无独立格"
+      - text: 境外收发货人
+        source: "#12 fields.yaml anchors；本张无独立格"
+
+  - id: traf_mode
+    aliases:
+      - text: 运输方式
+        source: 恒信草单 一般贸易出口!E5
+
+  - id: traf_name
+    aliases:
+      - text: 运输工具名称及航次号
+        source: 恒信草单 一般贸易出口!G5
+
+  - id: bill_no
+    aliases:
+      - text: 提运单号
+        source: 恒信草单 一般贸易出口!N5
+
+  - id: owner
+    aliases:
+      - text: 生产销售单位
+        source: 恒信草单 一般贸易出口!A7
+      - text: 消费使用单位
+        source: "#12 owner* 进出口镜像；本张无独立格"
+
+  - id: supv_mode
+    aliases:
+      - text: 监管方式
+        source: 恒信草单 一般贸易出口!E7（G7 标签错写，#9 已知不修）
+      - text: 贸易方式
+        source: "#12 supvModeCdde anchors"
+
+  - id: cut_mode
+    aliases:
+      - text: 征免性质
+        source: 恒信草单 一般贸易出口!I7
+
+  - id: license_no
+    aliases:
+      - text: 许可证号
+        source: 恒信草单 一般贸易出口!N7
+
+  - id: contr_no
+    aliases:
+      - text: 合同协议号
+        source: 恒信草单 一般贸易出口!A9
+      - text: 合同号
+        source: "恒信合同!F6（格内带冒号）；#12 contrNo anchors"
+
+  - id: trade_nation
+    aliases:
+      - text: 贸易国（地区）
+        source: 恒信草单 一般贸易出口!E9
+      - text: 贸易国(地区)
+        source: "#12 anchors；半角括号变体"
+
+  - id: trade_country
+    aliases:
+      - text: 运抵国（地区）
+        source: 恒信草单 一般贸易出口!G9
+      - text: 运抵国(地区)
+        source: "#12 anchors；半角括号变体"
+      - text: 启运国（地区）
+        source: "#12 表头对照 运抵国/启运国；本张出口无独立格"
+
+  - id: dest_port
+    aliases:
+      - text: 指运港
+        source: 恒信草单 一般贸易出口!I9
+      - text: 经停港
+        source: "#12 表头对照 指运港/经停港；本张无独立格"
+
+  - id: ciq_port
+    aliases:
+      - text: 离境口岸
+        source: 恒信草单 一般贸易出口!N9
+      - text: 入境口岸
+        source: "#12 表头对照 离/入境口岸；本张无独立格"
+
+  - id: wrap_type
+    aliases:
+      - text: 包装种类
+        source: 恒信草单 一般贸易出口!A11
+
+  - id: pack_no
+    aliases:
+      - text: 件数
+        source: 恒信草单 一般贸易出口!D11
+
+  - id: gross_wt
+    aliases:
+      - text: 毛重（千克）
+        source: 恒信草单 一般贸易出口!E11
+      - text: 毛重(千克)
+        source: "#12 grossWt anchors；半角括号变体"
+      - text: 毛重
+        source: "#12 别名交 #13；中文简称。G.W. 不进 BOX"
+
+  - id: net_wt
+    aliases:
+      - text: 净重（千克）
+        source: 恒信草单 一般贸易出口!F11
+      - text: 净重(千克)
+        source: "#12 netWt anchors；半角括号变体"
+      - text: 净重
+        source: "#12 别名交 #13；中文简称。N.W. 不进 BOX"
+
+  - id: trans_mode
+    aliases:
+      - text: 成交方式
+        source: 恒信草单 一般贸易出口!G11
+
+  - id: fee
+    aliases:
+      - text: 运费
+        source: 恒信草单 一般贸易出口!I11
+
+  - id: insur
+    aliases:
+      - text: 保费
+        source: 恒信草单 一般贸易出口!K11
+      - text: 保险费
+        source: "#12 insur* anchors"
+
+  - id: other_fee
+    aliases:
+      - text: 杂费
+        source: 恒信草单 一般贸易出口!N11
+
+  - id: attached_docs
+    aliases:
+      - text: 随附单证及编号
+        source: 恒信草单 一般贸易出口!A13
+      - text: 随附单证
+        source: "#12 attachedDocs anchors；短写"
+
+  - id: marks
+    aliases:
+      - text: 标记唛码及备注
+        source: 恒信草单 一般贸易出口!A15
+      - text: 标记唛码
+        source: "#12 markNo anchors；短写"
+
+  - id: note
+    aliases:
+      - text: 备注
+        source: 恒信草单 一般贸易出口!A16（格内「备注 :…」）；layout.py 原常量
+
+  - id: goods_place
+    aliases:
+      - text: 货物存放地点
+        source: "#12 表头对照 goodsPlace；本张恒信出口草单无独立格"
+
+  - id: desp_port
+    aliases:
+      - text: 启运港
+        source: "#12 despPortCode；本张恒信出口草单无独立格"
+
+  - id: custom_master
+    aliases:
+      - text: 申报地海关
+        source: "#12 customMaster。恒信 G2 只有「（深惠州关）」，无此标签"
+
+table:
+  - id: gno
+    aliases:
+      - text: 项号
+        source: 恒信草单 一般贸易出口!A17
+
+  - id: code_ts
+    aliases:
+      - text: 商品编号
+        source: 恒信草单 一般贸易出口!B17
+      - text: 商品编码
+        source: "#12 商品对照「商品编码」；恒信 Sheet3!H1 工作表有同名，不作为主依据"
+      - text: 海关编码
+        source: 国光总箱单!Q12「HS CODE海关编码」
+      - text: "HS"
+        source: 国光总箱单!Q12「HS CODE海关编码」。短 token，表头行 ≥2 命中才生效
+
+  - id: gname
+    aliases:
+      - text: 商品名称
+        source: 恒信草单 一般贸易出口!C17（子串打中「商品名称及规格型号」）
+      - text: 商品名称及规格型号
+        source: 恒信草单 一般贸易出口!C17；单列防以后改整词匹配
+      - text: 货物名称
+        source: 恒信装箱单!C11；发票!B11；合同!A14「(1)货物名称」
+      - text: 物料名称
+        source: 国光总箱单!B12；国光发票!B16
+      - text: Description
+        source: 恒信装箱单!C11、发票!B11 混写格；合同!A15 英文翻译行（并表头交 #15）
+
+  - id: gmodel
+    aliases:
+      - text: 规格型号
+        source: layout.py 原常量；#12 gmodel anchors
+      - text: 申报要素
+        source: 恒信草单 一般贸易出口!D17；国光总箱单!R12
+
+  - id: brand
+    aliases:
+      - text: 品牌
+        source: 恒信草单 一般贸易出口!E17；装箱单!D11「Brand （品牌）」
+
+  - id: gqty
+    aliases:
+      - text: 数量
+        source: 恒信草单 一般贸易出口!F17「数量PCS」
+      - text: 出货数量
+        source: 国光总箱单!D12；国光发票!D16。Issue 点名；「数量」已能打中，仍单列
+      - text: Qty
+        source: Issue #13 示例。不是 Q'ty 的子串，故两条都收
+      - text: "Q'ty"
+        source: 恒信装箱单!E11「Ship Q'ty」；发票!C11
+      - text: Quantity
+        source: 恒信合同!C15（英文表头行，并表头交 #15）
+
+  - id: gunit
+    aliases:
+      - text: 计价单位
+        source: 恒信草单 一般贸易出口!G17
+      # 不加「单位」：防误伤「生产销售单位」。国光 C12/C16 靠同行其它 token 凑满 2 命中。
+
+  - id: qty1_weight
+    aliases:
+      - text: 重量
+        source: 恒信草单 一般贸易出口!H17「重量KG」。草单这一列未区分毛/净，和净重、毛重不是同一概念
+
+  - id: net_wt
+    aliases:
+      - text: 净重
+        source: 恒信装箱单!H11 括号内；国光总箱单!G12/H12
+      - text: "N.W."
+        source: 恒信装箱单!H11「N.W. (Kg)」
+      - text: "NW"
+        source: 国光总箱单!G12「净重/个 NW」、!H12「总净重 NW」
+
+  - id: gross_wt
+    aliases:
+      - text: 毛重
+        source: 恒信装箱单!I11 括号内；国光总箱单!I12/J12
+      - text: "G.W."
+        source: Issue #13 写法。对不上恒信 I11「G.W .(Kg)」（W 后有空格），故另收 G.W
+      - text: "G.W"
+        source: 恒信装箱单!I11「G.W .(Kg)」；无第二点才能打中带空格写法
+      - text: "GW"
+        source: 国光总箱单!I12「毛重/箱 GW」、!J12「总毛重 GW」
+
+  - id: price
+    aliases:
+      - text: 单价
+        source: 恒信草单 一般贸易出口!I17
+      - text: Unit Price
+        source: 恒信发票!E11；合同!E15
+
+  - id: total
+    aliases:
+      - text: 总价
+        source: 恒信草单 一般贸易出口!J17
+      - text: 汇总价
+        source: 国光发票!G16
+      - text: 总值
+        source: 恒信发票!F11「Amount(HKD) (总值)」；合同!F14「(6)总值」
+      - text: Amount
+        source: 恒信发票!F11；合同!F15「Total Amount(HKD)」
+
+  - id: curr
+    aliases:
+      - text: 币制
+        source: 恒信草单 一般贸易出口!K17
+
+  - id: origin
+    aliases:
+      - text: 原产国
+        source: 恒信草单 一般贸易出口!L17「原产国（地区）」
+      - text: 原产地
+        source: 国光总箱单!S12。「原产国」打不中「原产地」
+      - text: Country of Origin
+        source: 恒信装箱单!J11；发票!G11；合同!G15。纯英文行需要
+
+  - id: dest_country
+    aliases:
+      - text: 最终目的国
+        source: 恒信草单 一般贸易出口!M17「最终目的国（地区）」
+
+  - id: district
+    aliases:
+      - text: 境内货源地
+        source: 恒信草单 一般贸易出口!N17
+
+  - id: duty
+    aliases:
+      - text: 征免
+        source: 恒信草单 一般贸易出口!O17

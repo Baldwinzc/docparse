@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from docparse.schema.loader import load_schema
+from docparse.schema.loader import load_layout_vocab, load_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -216,6 +216,30 @@ def test_layouts_answer_where_fields_come_from() -> None:
     assert schema.field("tdecDocusVoArr").layout == "empty_array"
     assert schema.field("gmodel").layout == "table_col"
     assert schema.field("tdecContasVoArr").layout == "empty_array"
+
+
+def test_layout_vocab_covers_issue_aliases() -> None:
+    vocab = load_layout_vocab()
+    box = vocab.box_labels()
+    table = set(vocab.table_tokens())
+    assert "毛重（千克）" in box
+    assert "毛重" in box
+    assert "货物存放地点" in box
+    assert "启运港" in box
+    assert "申报地海关" in box
+    assert "G.W." not in box
+    assert "N.W." not in box
+    assert "物料名称" in table
+    assert "出货数量" in table
+    assert "Qty" in table
+    assert "Q'ty" in table
+    assert "N.W." in table
+    assert "G.W." in table
+    assert "G.W" in table
+    assert "申报要素" in table
+    assert "货物名称" in table
+    assert "单位" not in table
+    assert all(alias.source for group in [*vocab.box, *vocab.table] for alias in group.aliases)
 
 
 def test_customer_originals_not_in_repo() -> None:

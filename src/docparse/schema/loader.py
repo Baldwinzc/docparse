@@ -61,8 +61,42 @@ class Schema(BaseModel):
         return None
 
 
+class VocabAlias(BaseModel):
+    text: str
+    source: str = ""
+
+
+class VocabGroup(BaseModel):
+    id: str
+    aliases: list[VocabAlias] = Field(default_factory=list)
+
+
+class LayoutVocab(BaseModel):
+    version: int = 1
+    box: list[VocabGroup] = Field(default_factory=list)
+    table: list[VocabGroup] = Field(default_factory=list)
+
+    def box_labels(self) -> frozenset[str]:
+        return frozenset(alias.text for group in self.box for alias in group.aliases)
+
+    def table_tokens(self) -> tuple[str, ...]:
+        seen: list[str] = []
+        for group in self.table:
+            for alias in group.aliases:
+                if alias.text not in seen:
+                    seen.append(alias.text)
+        return tuple(seen)
+
+
 @lru_cache(maxsize=1)
 def load_schema() -> Schema:
     path = Path(__file__).with_name("fields.yaml")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return Schema.model_validate(data)
+
+
+@lru_cache(maxsize=1)
+def load_layout_vocab() -> LayoutVocab:
+    path = Path(__file__).with_name("layout_vocab.yaml")
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return LayoutVocab.model_validate(data)
