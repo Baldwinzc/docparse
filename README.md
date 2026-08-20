@@ -2,7 +2,7 @@
 
 多格式单据解析骨架：用户上传压缩包 / PDF / Excel / 图片，最终输出一张出口报关单（表头 + 商品项）。
 
-当前阶段：Excel 框表 dump 已有；输出字段目录见 [docs/field-schema.md](docs/field-schema.md)。约束：
+当前阶段：Excel 框表 dump 已有；输出字段目录见 [docs/field-schema.md](docs/field-schema.md)；码表见 [docs/code-tables.md](docs/code-tables.md)。约束：
 
 - 主链路是确定性流水线，不是 Agent，也不引入 LangChain / LangGraph
 - 模型只通过云 API 调用，不部署本地大模型
@@ -159,7 +159,9 @@ python -m docparse.cli layout path/to/file.xlsx   # 只看键值和表，不做�
 - [设计文档](docs/design.md)
 - [模块地图](docs/modules.md)（后期按模块拆 Issue）
 - [云模型调研](docs/model-survey.md)（价格均附来源链接）
-- [字段 Schema 占位](docs/field-schema.md)
+- [字段 Schema](docs/field-schema.md)
+- [码表加载](docs/code-tables.md)
+- [版面词表](docs/layout-vocab.md)
 - [持久化预留](docs/persistence.md)
 - [开发规范](CLAUDE.md)
 

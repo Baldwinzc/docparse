@@ -4,7 +4,7 @@
 
 形状对齐 Demo `字段说明.json`；草单上看得到、json 没有的从 `报关字段说明.md` 补。客户原件不进仓库。
 
-本目录只回答「输出什么、从哪类版面来」。名称转 code 是 #14，BOX/TABLE 别名见 [layout-vocab.md](layout-vocab.md)（#13），映射组装是 #17–#19。
+本目录只回答「输出什么、从哪类版面来」。名称转 code 见 [code-tables.md](code-tables.md)（#14），BOX/TABLE 别名见 [layout-vocab.md](layout-vocab.md)（#13），映射组装是 #17–#19。
 
 本期**不区分必填 / 选填**，YAML 里 `required` 一律未标。后期再优化。
 
@@ -30,7 +30,7 @@
 | 申报地海关 | `customMaster` | 海关口岸代码（四位） | 如 5341 深惠州关、5352 梅沙海关。草单不一定有独立格 |
 | 出境关别 / 进境关别 | `iePort` | 海关口岸代码（四位） | 标准表「进/出口口岸」。恒信「莲塘口岸」进这里，**不要**写进 `customMaster` |
 | 离境口岸 / 入境口岸 | `ciqEntyPortCode` | 入境/离境口岸 | CIQ 口岸，不是四位关区。半岛参考值 477101 |
-| 指运港 / 经停港 | `distinatePort` | 港口代码 | 识别结果用 `HKG000` / `HKG003` 风格。六位特殊监管区码型交 #14 |
+| 指运港 / 经停港 | `distinatePort` | 港口代码 | 按中文名精确匹配。`HKG000` 风格与六位特殊监管区共存于同一张表，见 [code-tables.md](code-tables.md) |
 | 启运港 | `despPortCode` | 港口代码 | json 漏标；出口草单常空，有则抽 |
 
 ## 调用方传入（不解析）
@@ -138,7 +138,7 @@ json 另有、用户这次没点名但仍收的：`qty1` / `unit1` / `qty2` / `u
 
 - 必填 / 选填
 - BOX / TABLE 同义词、列名别名（#13，已抽到 `schema/layout_vocab.yaml`）
-- 名称转 code（#14）
+- 名称转 code（#14，已抽到 `schema/code_tables.yaml`）
 - 同一格拆成多个字段、跨表补充（#17 / #18）
 - 集装箱 / VIN 等块：空数组
 - `gmodel` 规范编码（`0|0|...`）先留原文

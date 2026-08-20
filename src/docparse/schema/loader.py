@@ -88,6 +88,66 @@ class LayoutVocab(BaseModel):
         return tuple(seen)
 
 
+class CodeEntry(BaseModel):
+    code: str
+    name: str
+
+    @model_validator(mode="after")
+    def normalize(self) -> "CodeEntry":
+        self.code = str(self.code).strip()
+        self.name = self.name.strip()
+        return self
+
+
+class CodeTable(BaseModel):
+    source_sheet: str = ""
+    notes: str = ""
+    entries: list[CodeEntry] = Field(default_factory=list)
+
+
+class PendingTable(BaseModel):
+    name: str
+    used_by: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class CodeTables(BaseModel):
+    """名称 ↔ code。默认精确匹配；未知名称返回 None，不瞎填。"""
+
+    version: int = 1
+    match: str = "exact"
+    pending: list[PendingTable] = Field(default_factory=list)
+    tables: dict[str, CodeTable] = Field(default_factory=dict)
+
+    def _require_table(self, table: str) -> CodeTable:
+        hit = self.tables.get(table)
+        if hit is None:
+            raise ValueError(f"unknown code table: {table}")
+        return hit
+
+    def lookup(self, table: str, name: str | None) -> str | None:
+        """中文名称 → code。strip 后整词相等；0 或 >1 个命中都返回 None。"""
+        entries = self._require_table(table).entries
+        key = (name or "").strip()
+        if not key:
+            return None
+        codes = [item.code for item in entries if item.name == key]
+        if len(set(codes)) != 1:
+            return None
+        return codes[0]
+
+    def reverse(self, table: str, code: str | None) -> str | None:
+        """code → 中文名称。0 或 >1 个命中都返回 None。"""
+        entries = self._require_table(table).entries
+        key = str(code or "").strip()
+        if not key:
+            return None
+        names = [item.name for item in entries if item.code == key]
+        if len(set(names)) != 1:
+            return None
+        return names[0]
+
+
 @lru_cache(maxsize=1)
 def load_schema() -> Schema:
     path = Path(__file__).with_name("fields.yaml")
@@ -100,3 +160,10 @@ def load_layout_vocab() -> LayoutVocab:
     path = Path(__file__).with_name("layout_vocab.yaml")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return LayoutVocab.model_validate(data)
+
+
+@lru_cache(maxsize=1)
+def load_code_tables() -> CodeTables:
+    path = Path(__file__).with_name("code_tables.yaml")
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return CodeTables.model_validate(data)
