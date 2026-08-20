@@ -1,7 +1,238 @@
+from pathlib import Path
+
 from docparse.schema.loader import load_schema
 
+ROOT = Path(__file__).resolve().parents[1]
 
-def test_placeholder_schema_loads() -> None:
+JSON_HEAD = {
+    "cusIEFlag",
+    "consignorEname",
+    "agentCode",
+    "agentName",
+    "agentScc",
+    "ownerCode",
+    "ownerName",
+    "ownerScc",
+    "ownerCiqCode",
+    "transMode",
+    "contrNo",
+    "cusTradeCountry",
+    "cusTradeNationCode",
+    "cutMode",
+    "grossWt",
+    "netWt",
+    "cusTrafMode",
+    "customMaster",
+    "distinatePort",
+    "entryType",
+    "feeCurr",
+    "feeMark",
+    "feeRate",
+    "insurCurr",
+    "insurMark",
+    "insurRate",
+    "otherCurr",
+    "otherMark",
+    "otherRate",
+    "manualNo",
+    "markNo",
+    "noteS",
+    "promiseItems",
+    "supvModeCdde",
+    "wrapType",
+    "tradeScc",
+    "tradeCode",
+    "tradeCiqCode",
+    "tradeName",
+    "packNo",
+    "dataSource",
+    "promiseItem1",
+    "promiseItem2",
+    "promiseItem3",
+}
+
+JSON_GOODS = {
+    "gno",
+    "codeTs",
+    "gname",
+    "gmodel",
+    "declPrice",
+    "declTotal",
+    "tradeCurr",
+    "gqty",
+    "gunit",
+    "qty1",
+    "unit1",
+    "qty2",
+    "unit2",
+    "cusOriginCountry",
+    "destinationCountry",
+    "districtCode",
+    "dutyMode",
+    "exgVersion",
+    "customGrossWet",
+    "customNetWt",
+    "id",
+    "brand",
+}
+
+MUST_HEAD = {
+    "preEntryId",
+    "entryId",
+    "tradeName",
+    "tradeCode",
+    "iePort",
+    "ieDate",
+    "declDate",
+    "manualNo",
+    "consignorEname",
+    "cusTrafMode",
+    "trafName",
+    "cusVoyageNo",
+    "billNo",
+    "goodsPlace",
+    "ownerName",
+    "ownerCode",
+    "supvModeCdde",
+    "licenseNo",
+    "despPortCode",
+    "contrNo",
+    "cusTradeNationCode",
+    "cusTradeCountry",
+    "distinatePort",
+    "ciqEntyPortCode",
+    "wrapType",
+    "packNo",
+    "grossWt",
+    "netWt",
+    "transMode",
+    "feeMark",
+    "insurMark",
+    "otherMark",
+    "attachedDocs",
+    "markNo",
+    "noteS",
+}
+
+MUST_GOODS = {
+    "gno",
+    "codeTs",
+    "gname",
+    "gmodel",
+    "brand",
+    "gqty",
+    "gunit",
+    "declPrice",
+    "declTotal",
+    "tradeCurr",
+    "cusOriginCountry",
+    "destinationCountry",
+    "districtCode",
+}
+
+
+def _all_names(schema) -> set[str]:
+    names: set[str] = set()
+    for collection in (
+        schema.head,
+        schema.goods,
+        schema.caller_params,
+        schema.ignored,
+        schema.empty_arrays,
+    ):
+        names.update(item.name for item in collection)
+    return names
+
+
+def test_catalog_covers_json_and_must_items() -> None:
     schema = load_schema()
-    assert schema.field("customs_declaration_no") is not None
-    assert "rule" in schema.field("customs_declaration_no").extractors
+    names = _all_names(schema)
+    assert not (JSON_HEAD - names), JSON_HEAD - names
+    assert not (JSON_GOODS - names), JSON_GOODS - names
+    assert not (MUST_HEAD - names), MUST_HEAD - names
+    assert not (MUST_GOODS - names), MUST_GOODS - names
+    assert schema.goods_array == "tdecGoodsitemsVoArr"
+    assert schema.field("entryId") is not None
+    assert "rule" in schema.field("entryId").extractors
+
+
+def test_no_required_distinction_this_issue() -> None:
+    schema = load_schema()
+    for spec in [*schema.head, *schema.goods]:
+        assert spec.required is False, spec.name
+
+
+def test_agent_fields_are_caller_params() -> None:
+    schema = load_schema()
+    by_name = {item.name: item for item in schema.caller_params}
+    for name in ("agentCode", "agentName", "agentScc", "agentCiqCode"):
+        spec = by_name[name]
+        assert spec.parse is False
+        assert spec.layout == "caller"
+        assert spec.group == "caller"
+
+
+def test_ignored_items_listed() -> None:
+    schema = load_schema()
+    names = {item.name for item in schema.ignored}
+    assert {
+        "dataSource",
+        "promiseItem1",
+        "promiseItem2",
+        "promiseItem3",
+        "sysBillNo",
+        "ownerCompanyId",
+        "requestId",
+        "decId",
+    } <= names
+    assert "brand" not in names
+    assert any(item.name == "id" and item.group == "goods" for item in schema.ignored)
+    assert any(item.name == "headId" for item in schema.ignored)
+    assert all(item.ignore and not item.parse for item in schema.ignored)
+
+
+def test_port_mapping() -> None:
+    schema = load_schema()
+    by_label = {item.draft_label: item for item in schema.port_mapping}
+    assert by_label["申报地海关"].field == "customMaster"
+    assert by_label["出境关别"].field == "iePort"
+    assert by_label["离境口岸"].field == "ciqEntyPortCode"
+    assert by_label["指运港"].field == "distinatePort"
+    assert {item.status for item in schema.port_mapping} == {"decided"}
+    assert schema.field("iePort").layout == "box_kv"
+    assert schema.field("customMaster").code_table == "海关口岸代码"
+    assert schema.field("ciqEntyPortCode").code_table == "入境/离境口岸"
+
+
+def test_layouts_answer_where_fields_come_from() -> None:
+    schema = load_schema()
+    allowed = {"box_kv", "table_col", "caller", "default", "none", "empty_array"}
+    for spec in [*schema.head, *schema.goods, *schema.caller_params, *schema.empty_arrays]:
+        assert spec.layout in allowed, spec.name
+        assert spec.notes, spec.name
+    assert schema.field("declDate").layout == "box_kv"
+    assert schema.field("brand").layout == "table_col"
+    assert schema.field("attachedDocs").layout == "box_kv"
+    assert schema.field("tdecDocusVoArr").layout == "empty_array"
+    assert schema.field("gmodel").layout == "table_col"
+    assert schema.field("tdecContasVoArr").layout == "empty_array"
+
+
+def test_customer_originals_not_in_repo() -> None:
+    forbidden_names = (
+        "（恒信）一般贸易草单HDX260251BLU.xlsx",
+        "（国光）箱单发票合同26VN0502-1.xlsx",
+        "基础报关参数数据.xlsx",
+        "SJ25084373-310795HKD.pdf",
+    )
+    tracked = [
+        path
+        for path in ROOT.rglob("*")
+        if path.is_file() and ".git" not in path.parts and "__pycache__" not in path.parts
+    ]
+    names = {path.name for path in tracked}
+    for name in forbidden_names:
+        assert name not in names, name
+    for path in tracked:
+        if path.suffix.lower() in {".xlsx", ".xls", ".pdf", ".zip"}:
+            raise AssertionError(f"binary original slipped in: {path}")

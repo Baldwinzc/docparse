@@ -23,7 +23,7 @@ def test_parse_text_declaration_number() -> None:
     assert job.status in {JobStatus.SUCCEEDED, JobStatus.NEEDS_REVIEW}
     assert job.result is not None
     fields = job.result.package.fields
-    field = next(item for item in fields if item.name == "customs_declaration_no")
+    field = next(item for item in fields if item.name == "entryId")
     assert field.value == "ABCD1234567890"
     assert field.evidence
     docs = job.result.package.documents
@@ -37,7 +37,7 @@ def test_parse_zip_with_text_member() -> None:
     job = _pipeline().process("pack.zip", buffer.getvalue())
     assert job.result is not None
     fields = job.result.package.fields
-    field = next(item for item in fields if item.name == "customs_declaration_no")
+    field = next(item for item in fields if item.name == "entryId")
     assert field.value == "XYZ9876543210"
 
 
