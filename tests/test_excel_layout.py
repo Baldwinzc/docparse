@@ -148,6 +148,61 @@ def test_box_form_key_values_and_table() -> None:
     assert table.rows[0]["总价"] == "14700"
 
 
+def _alias_workbook() -> bytes:
+    book = Workbook()
+    packing = book.active
+    packing.title = "总箱单"
+    packing["A1"] = "物料名称"
+    packing["B1"] = "出货数量"
+    packing["C1"] = "N.W."
+    packing["D1"] = "G.W ."
+    packing["A2"] = "贴纸"
+    packing["B2"] = 100
+    packing["C2"] = 0.0013
+    packing["D2"] = 0.5013
+
+    draft = book.create_sheet("草单")
+    draft["A3"] = "毛重"
+    draft["A4"] = "12.5"
+    draft["B3"] = "货物存放地点"
+    draft["B4"] = "惠州仓库"
+
+    for row in packing.iter_rows(min_row=1, max_row=2, min_col=1, max_col=4):
+        for cell in row:
+            cell.border = _thin()
+    for row in draft.iter_rows(min_row=3, max_row=4, min_col=1, max_col=2):
+        for cell in row:
+            cell.border = _thin()
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_alias_headers_and_box_labels() -> None:
+    document = parse_excel(_alias_workbook(), file_id="a1", filename="alias.xlsx")
+    packing = next(sheet for sheet in document.sheets if sheet.name == "总箱单")
+    assert packing.tables
+    table = packing.tables[0]
+    assert "物料名称" in table.headers
+    assert "出货数量" in table.headers
+    assert table.rows[0]["物料名称"] == "贴纸"
+    assert table.rows[0]["出货数量"] == "100"
+
+    draft = next(sheet for sheet in document.sheets if sheet.name == "草单")
+    pairs = _pairs(draft)
+    assert pairs["毛重"] == "12.5"
+    assert pairs["货物存放地点"] == "惠州仓库"
+
+
+def test_box_label_row_is_not_a_table() -> None:
+    document = parse_excel(_box_workbook(), file_id="f1", filename="draft.xlsx")
+    draft = next(sheet for sheet in document.sheets if sheet.name == "一般贸易出口")
+    header_rows = {table.header_row for table in draft.tables}
+    assert 11 not in header_rows
+    assert 17 in header_rows
+
+
 @pytest.mark.skipif(not REAL_HENGXIN.exists(), reason="本地恒信样本不在 CI")
 def test_hengxin_sample_keeps_formulas_and_goods_table() -> None:
     document = parse_excel(

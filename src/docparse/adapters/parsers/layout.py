@@ -8,64 +8,9 @@ from __future__ import annotations
 import re
 
 from docparse.domain.ir import Cell, KeyValue, Sheet, Table
+from docparse.schema.loader import load_layout_vocab
 
 _COLON = re.compile(r"^([^：:]{1,40}?)\s*[：:]\s*(.+)$")
-
-_BOX_LABELS = frozenset(
-    {
-        "境内发货人",
-        "出境关别",
-        "出口日期",
-        "进口日期",
-        "申报日期",
-        "备案号",
-        "境外收货人",
-        "运输方式",
-        "运输工具名称及航次号",
-        "提运单号",
-        "生产销售单位",
-        "监管方式",
-        "征免性质",
-        "许可证号",
-        "合同协议号",
-        "贸易国（地区）",
-        "运抵国（地区）",
-        "指运港",
-        "离境口岸",
-        "包装种类",
-        "件数",
-        "毛重（千克）",
-        "净重（千克）",
-        "成交方式",
-        "运费",
-        "保费",
-        "杂费",
-        "随附单证及编号",
-        "标记唛码及备注",
-        "预录入编号",
-        "海关编号",
-        "备注",
-    }
-)
-
-_TABLE_HEADERS = (
-    "项号",
-    "商品编号",
-    "商品名称",
-    "规格型号",
-    "申报要素",
-    "品牌",
-    "数量",
-    "计价单位",
-    "重量",
-    "单价",
-    "总价",
-    "币制",
-    "原产国",
-    "最终目的国",
-    "境内货源地",
-    "征免",
-)
 
 
 def split_sheet(sheet: Sheet) -> Sheet:
@@ -118,13 +63,46 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
     return tables
 
 
+def _table_tokens() -> tuple[str, ...]:
+    return load_layout_vocab().table_tokens()
+
+
+def _box_labels() -> frozenset[str]:
+    return load_layout_vocab().box_labels()
+
+
+def _token_in_text(token: str, text: str) -> bool:
+    if token.isascii() and any(ch.isalpha() for ch in token):
+        pattern = r"(?<![A-Za-z0-9])" + re.escape(token) + r"(?![A-Za-z0-9])"
+        return re.search(pattern, text, flags=re.IGNORECASE) is not None
+    return token in text
+
+
+def _label_text(text: str) -> str:
+    return text.strip().rstrip("：:").strip()
+
+
+def _is_box_label_row(row_cells: list[Cell]) -> bool:
+    """框表标签横排（包装种类/件数/毛重…）不当表头。"""
+    labels = _box_labels()
+    hits = 0
+    for cell in row_cells:
+        cleaned = _label_text(cell.value)
+        if cleaned in labels:
+            hits += 1
+    return hits >= 3 and hits == len(row_cells)
+
+
 def _is_header_row(row_cells: list[Cell]) -> bool:
     if len(row_cells) < 3:
         return False
+    if _is_box_label_row(row_cells):
+        return False
+    tokens = _table_tokens()
     hits = 0
     for cell in row_cells:
         text = cell.value
-        if any(token in text for token in _TABLE_HEADERS):
+        if any(_token_in_text(token, text) for token in tokens):
             hits += 1
     return hits >= 2
 
@@ -176,7 +154,7 @@ def _same_cell_colon(cell: Cell) -> KeyValue | None:
     key, value = match.group(1).strip(), match.group(2).strip()
     if not key or not value:
         return None
-    if any(token in key for token in _TABLE_HEADERS):
+    if any(_token_in_text(token, key) for token in _table_tokens()):
         return None
     return KeyValue(
         key=key,
@@ -192,7 +170,7 @@ def _looks_like_label(text: str) -> bool:
     cleaned = stripped.rstrip("：:").strip()
     if not cleaned or len(cleaned) > 20:
         return False
-    if cleaned in _BOX_LABELS:
+    if cleaned in _box_labels():
         return True
     if stripped.endswith((":", "：")) and not re.fullmatch(r"[\d.\-]+", cleaned):
         return True
@@ -233,7 +211,7 @@ def _value_right(
         return None
     text = cell.value.strip()
     key = text.rstrip("：:").strip()
-    if not (text.endswith((":", "：")) or key in _BOX_LABELS):
+    if not (text.endswith((":", "：")) or key in _box_labels()):
         return None
     right_col = _merge_right(cell) + 1
     other = by_pos.get((cell.row, right_col))
