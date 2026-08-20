@@ -31,7 +31,7 @@ docparse/
 | 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/表头（#9）；PDF 需可选依赖；图片未接 OCR | PDF / 国光冒号加强 / 扫描件 OCR |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 | 按真实样本补规则 / LLM |
-| 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 | 等字段清单和 case |
+| 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 | 目录已在 #12，映射交 #17/#18 |
 | 标准化与校验 | `extraction/validate.py` | 格式 / 必填 / 证据 | 金额、日期、跨字段 |
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
@@ -44,7 +44,7 @@ docparse/
 
 需求方 case 和字段清单到位后，按这个顺序拆，一次一个 worktree：
 
-1. 字段表按真实清单改 `schema/fields.yaml`
+1. 字段表按真实清单改 `schema/fields.yaml`（#12）
 2. PDF 文本层解析（`parsers/pdf.py`）
 3. Excel 框表解析（`parsers/excel.py` + `layout.py`，#9）
 4. 报关单规则抽取（锚点 / 表头）

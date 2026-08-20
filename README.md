@@ -1,8 +1,8 @@
 # DocParse
 
-多格式单据解析骨架：用户上传压缩包 / PDF / Excel / 图片，流水线解析出报关单号等业务字段。
+多格式单据解析骨架：用户上传压缩包 / PDF / Excel / 图片，最终输出一张出口报关单（表头 + 商品项）。
 
-当前阶段是**框架层**。需求方尚未给出真实样本和字段清单，因此：
+当前阶段：Excel 框表 dump 已有；输出字段目录见 [docs/field-schema.md](docs/field-schema.md)。约束：
 
 - 主链路是确定性流水线，不是 Agent，也不引入 LangChain / LangGraph
 - 模型只通过云 API 调用，不部署本地大模型

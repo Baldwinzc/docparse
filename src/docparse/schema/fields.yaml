@@ -1,5 +1,9 @@
-# 占位字段。需求方给出真实清单后只改本文件。
-version: 1
+# 出口报关单输出字段目录（Issue #12）
+# 形状对齐 Demo 字段说明.json；草单上看得到、json 没有的从 报关字段说明.md 补。
+# 客户原件不进仓库。本文件只是目录，不接样本、不改组装。
+
+version: 2
+goods_array: tdecGoodsitemsVoArr
 document_types:
   - customs_declaration
   - invoice
@@ -8,44 +12,843 @@ document_types:
   - contract
   - unknown
 
-fields:
-  - name: customs_declaration_no
-    display_name: 报关单号
-    required: true
-    value_type: string
+# 出境关别 / 申报地海关 / 离境口岸。字段已定；码型与样本错填见 notes。
+port_mapping:
+  - draft_label: 申报地海关
+    field: customMaster
+    code_table: 海关口岸代码
+    status: decided
+    notes: 四位关区代码（如 5341 深惠州关、5352 梅沙海关）。草单不一定有独立格。
+
+  - draft_label: 出境关别
+    field: iePort
+    code_table: 海关口岸代码
+    status: decided
+    notes: 标准表「进/出口口岸」。恒信草单标签是「出境关别」。参考 JSON 把莲塘写进 customMaster，目录不跟着错。
+
+  - draft_label: 离境口岸
+    field: ciqEntyPortCode
+    code_table: 入境/离境口岸
+    status: decided
+    notes: CIQ 口岸，不是四位海关关区。半岛参考值 477101。
+
+  - draft_label: 指运港
+    field: distinatePort
+    code_table: 港口代码
+    status: decided
+    notes: 识别结果用 HKG000 / HKG003 风格。六位特殊监管区码型交 #14，不改本字段。
+
+  - draft_label: 启运港
+    field: despPortCode
+    code_table: 港口代码
+    status: decided
+    notes: json 漏标；出口草单常空。有则抽。
+
+caller_params:
+  - name: agentCode
+    display_name: 10位申报单位海关代码
+    group: caller
+    layout: caller
+    parse: false
+    notes: 申报单位不解析，调用方传入。
+
+  - name: agentName
+    display_name: 申报单位名称
+    group: caller
+    layout: caller
+    parse: false
+    notes: 申报单位不解析，调用方传入。
+
+  - name: agentScc
+    display_name: 18位申报单位信用代码
+    group: caller
+    layout: caller
+    parse: false
+    notes: 申报单位不解析，调用方传入。
+
+  - name: agentCiqCode
+    display_name: 申报单位检验检疫代码
+    group: caller
+    layout: caller
+    parse: false
+    notes: md 有、json 字段说明无；同属申报单位，外传不解析。
+
+ignored:
+  - name: dataSource
+    display_name: 数据来源
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 标注可忽略。
+
+  - name: promiseItem1
+    display_name: 承诺事项1
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 标注可忽略。
+
+  - name: promiseItem2
+    display_name: 承诺事项2
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 标注可忽略。
+
+  - name: promiseItem3
+    display_name: 承诺事项3
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 标注可忽略。
+
+  - name: id
+    display_name: 商品项内部ID
+    group: goods
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 标注可忽略。不要生成 UUID。输出商品项时不要写这个键。
+
+  - name: sysBillNo
+    display_name: 公司单据编号
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+  - name: ownerCompanyId
+    display_name: 业务所属公司主键
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+  - name: ownerCompanyCode
+    display_name: 业务所属公司代码
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+  - name: ownerCompanyName
+    display_name: 业务所属公司名称
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+  - name: requestId
+    display_name: API传递ID
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+  - name: headId
+    display_name: 表头主键id
+    group: head
+    layout: none
+    parse: false
+    ignore: true
+    notes: json 字段名是 id。系统主键，不解析。
+
+  - name: decId
+    display_name: 报关单id
+    group: ignored
+    layout: none
+    parse: false
+    ignore: true
+    notes: 系统主键，不解析。
+
+empty_arrays:
+  - name: tdecContasVoArr
+    display_name: 集装箱
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecCoplimitVoArr
+    display_name: 企业资质
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecDocusVoArr
+    display_name: 随附单证
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。草单原文先收在 attachedDocs，拆条交后续组装。
+
+  - name: tdecEdocRealationVoArr
+    display_name: 电子随附单据
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecOthersPacksVoArr
+    display_name: 其他包装
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecRequCertVoArr
+    display_name: 检验检疫申报要素
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecUsersVoArr
+    display_name: 检验检疫使用单位联系人
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecEcoRelVoArr
+    display_name: 原产地
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+  - name: tdecGoodsitemsVin
+    display_name: 许可证VIN
+    group: array
+    layout: empty_array
+    parse: false
+    value_type: array
+    notes: 有则空数组。本期不验收必填。
+
+head:
+  - name: cusIEFlag
+    display_name: 进出口类型
+    group: head
+    layout: default
     sources: [customs_declaration]
-    pattern: '^[A-Za-z0-9]{10,32}$'
+    anchors: [进出口类型]
+    notes: E 出口 / I 进口。本期只做出口，组装时默认 E，不从申报单位猜。
+
+  - name: entryType
+    display_name: 报关单类型
+    group: head
+    layout: none
+    sources: [customs_declaration]
+    anchors: [报关单类型]
+    code_table: 报关单类型
+    notes: 参考 JSON 常为 M。草单通常无此格，抽不到就空，不编造。
+
+  - name: entryId
+    display_name: 海关编号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
     anchors: [海关编号, 报关单号, 报关单编号]
-    extractors: [rule, llm]
+    notes: md 补。未申报常空，不作为本期必填。
 
-  - name: invoice_no
-    display_name: 发票号
-    required: false
-    value_type: string
-    sources: [invoice, customs_declaration]
-    anchors: [发票号, Invoice No, Invoice Number]
-    extractors: [rule, llm]
+  - name: preEntryId
+    display_name: 预录入编号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [预录入编号]
+    notes: md 补。草单有格则抽。
 
-  - name: contract_no
-    display_name: 合同号
-    required: false
-    value_type: string
-    sources: [contract, customs_declaration]
-    anchors: [合同号, 合同协议号, Contract No]
-    extractors: [rule, llm]
-
-  - name: declaration_date
+  - name: declDate
     display_name: 申报日期
-    required: false
+    group: head
+    layout: box_kv
     value_type: date
     sources: [customs_declaration]
-    anchors: [申报日期, 出口日期, 进口日期]
-    extractors: [rule, llm]
+    anchors: [申报日期]
+    notes: 草单有独立格，和 ieDate（进/出口日期）不是同一个字段。json / md 都未列此键，键名待业务确认（海关报文常用 dDate）。
 
-  - name: total_amount
-    display_name: 总价
-    required: false
-    value_type: money
+  - name: tradeName
+    display_name: 境内收发货人名称
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [境内发货人, 境内收发货人]
+    notes: 框表常与海关代码写在同一格，名称/代码拆分交 #17。
+
+  - name: tradeCode
+    display_name: 10位境内收发货人海关代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [境内发货人, 境内收发货人]
+    notes: 常嵌在「境内发货人」同一格末尾。
+
+  - name: tradeScc
+    display_name: 18位境内收发货人信用代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [信用代码, 社会信用代码]
+    notes: 草单常无独立格；有则抽。
+
+  - name: tradeCiqCode
+    display_name: 境内收发货人检验检疫代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [检验检疫代码]
+    notes: 草单常无独立格；有则抽。
+
+  - name: consignorEname
+    display_name: 境外收发货人英文名称
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [境外收货人, 境外收发货人]
+    notes: 出口草单「境外收货人」。
+
+  - name: ownerName
+    display_name: 生产销售单位名称
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [生产销售单位, 消费使用单位]
+    notes: 文件里有就抽，没有就空。
+
+  - name: ownerCode
+    display_name: 生产销售单位代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [生产销售单位, 消费使用单位]
+    notes: 文件里有就抽。常与名称同一格。
+
+  - name: ownerScc
+    display_name: 18位生产销售单位信用代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [生产销售单位]
+    notes: 文件里有就抽。
+
+  - name: ownerCiqCode
+    display_name: 生产销售单位检验检疫代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [生产销售单位]
+    notes: 文件里有就抽。
+
+  - name: customMaster
+    display_name: 申报地海关代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [申报地海关]
+    code_table: 海关口岸代码
+    notes: 四位关区。见 port_mapping。草单不一定有独立格。
+
+  - name: iePort
+    display_name: 进/出口口岸
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [出境关别, 出口口岸, 进口口岸, 进/出口口岸]
+    code_table: 海关口岸代码
+    notes: md 补。草单「出境关别」进本字段，不要写进 customMaster。
+
+  - name: ciqEntyPortCode
+    display_name: 入境/离境口岸代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [离境口岸, 入境口岸]
+    code_table: 入境/离境口岸
+    notes: md / json 漏标。见 port_mapping。
+
+  - name: distinatePort
+    display_name: 经停港/指运港
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [指运港, 经停港]
+    code_table: 港口代码
+    notes: 名称转码交 #14。
+
+  - name: despPortCode
+    display_name: 启运港
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [启运港]
+    code_table: 港口代码
+    notes: json 漏标。出口常空。
+
+  - name: ieDate
+    display_name: 进/出口日期
+    group: head
+    layout: box_kv
+    value_type: date
+    sources: [customs_declaration]
+    anchors: [出口日期, 进口日期, 进/出口日期]
+    notes: md 补。不要和「申报日期」混成一个字段。
+
+  - name: cusTrafMode
+    display_name: 运输方式代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运输方式]
+    code_table: 运输方式
+    notes: 名称如「公路运输」转码交 #14。
+
+  - name: trafName
+    display_name: 运输工具名称
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运输工具名称及航次号, 运输工具名称]
+    notes: md 补。草单常与航次号同一格，拆分交 #17。
+
+  - name: cusVoyageNo
+    display_name: 航次号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运输工具名称及航次号, 航次号]
+    notes: md / json 漏标。与 trafName 同一格。
+
+  - name: billNo
+    display_name: 提运单号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [提运单号]
+    notes: md 补。国光参考 JSON 有此字段。
+
+  - name: licenseNo
+    display_name: 许可证号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [许可证号]
+    notes: md 补。无则空。
+
+  - name: manualNo
+    display_name: 备案号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [备案号]
+    notes: 无则空。
+
+  - name: contrNo
+    display_name: 合同协议号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration, contract]
+    anchors: [合同协议号, 合同号, Contract No]
+    notes: 框表优先；合同 sheet 只补充。
+
+  - name: supvModeCdde
+    display_name: 监管方式/贸易方式
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [监管方式, 贸易方式]
+    code_table: 监管方式
+    notes: 字段名按 json 原样（Cdde）。恒信草单 G7 标签错写成「监管方式」的版面问题不在本 Issue。
+
+  - name: cutMode
+    display_name: 征免性质
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [征免性质]
+    code_table: 征免性质
+    notes: 恒信草单该格不在正下方，版面刀 #15 再补；目录仍收此字段。
+
+  - name: cusTradeNationCode
+    display_name: 贸易国别(地区)
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [贸易国（地区）, 贸易国(地区), 贸易国别]
+    code_table: 国别
+    notes: 框表「贸易国（地区）」。
+
+  - name: cusTradeCountry
+    display_name: 启运(运抵)国
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运抵国（地区）, 运抵国(地区), 启运国, 运抵国]
+    code_table: 国别
+    notes: 出口对应运抵国。
+
+  - name: wrapType
+    display_name: 包装种类代码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [包装种类]
+    code_table: 包装种类
+    notes: 名称转码交 #14。
+
+  - name: packNo
+    display_name: 件数
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [件数]
+    notes: 恒信草单公式引用装箱单。有海关框表以框表为准，箱单补充。
+
+  - name: grossWt
+    display_name: 毛重(公斤)
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [毛重（千克）, 毛重(千克), 毛重]
+    notes: 框表优先。别名 G.W. 交 #13。
+
+  - name: netWt
+    display_name: 净重(公斤)
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [净重（千克）, 净重(千克), 净重]
+    notes: 框表优先。别名 N.W. 交 #13。
+
+  - name: transMode
+    display_name: 成交方式
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [成交方式]
+    code_table: 成交方式
+    notes: 名称如 FOB 转码交 #14。
+
+  - name: feeMark
+    display_name: 运费标志
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运费]
+    notes: 与 feeRate / feeCurr 同一格，拆分交 #17。无则空。
+
+  - name: feeRate
+    display_name: 运费值
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration]
+    anchors: [运费]
+    notes: 与运费标志同一格。
+
+  - name: feeCurr
+    display_name: 运费货币类型
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [运费]
+    code_table: 币制
+    notes: 与运费标志同一格。
+
+  - name: insurMark
+    display_name: 保险费标志
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [保费, 保险费]
+    notes: 与 insurRate / insurCurr 同一格。无则空。
+
+  - name: insurRate
+    display_name: 保费值
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration]
+    anchors: [保费, 保险费]
+    notes: 与保费标志同一格。
+
+  - name: insurCurr
+    display_name: 保费货币类型
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [保费, 保险费]
+    code_table: 币制
+    notes: 与保费标志同一格。
+
+  - name: otherMark
+    display_name: 杂费标志
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [杂费]
+    notes: 与 otherRate / otherCurr 同一格。无则空。
+
+  - name: otherRate
+    display_name: 杂费值
+    group: head
+    layout: box_kv
+    value_type: number
+    sources: [customs_declaration]
+    anchors: [杂费]
+    notes: 与杂费标志同一格。
+
+  - name: otherCurr
+    display_name: 杂费货币类型
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [杂费]
+    code_table: 币制
+    notes: 与杂费标志同一格。
+
+  - name: markNo
+    display_name: 标记唛码
+    group: head
+    layout: box_kv
+    sources: [customs_declaration, packing_list]
+    anchors: [标记唛码及备注, 标记唛码]
+    notes: json 默认 N/M。草单常与备注同一格，拆分交 #17。抽不到不编造 N/M（那是接口侧默认，校验 #20 再定）。
+
+  - name: noteS
+    display_name: 备注
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [备注, 标记唛码及备注]
+    notes: 与唛码可能同一格。
+
+  - name: attachedDocs
+    display_name: 随附单证及编号
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [随附单证及编号, 随附单证]
+    notes: 草单有格。结构化数组见 tdecDocusVoArr；本字段先收原文。拆条交后续组装。
+
+  - name: goodsPlace
+    display_name: 货物存放地点
+    group: head
+    layout: box_kv
+    sources: [customs_declaration]
+    anchors: [货物存放地点]
+    notes: json 漏标。半岛参考 JSON 有；出口草单常无。
+
+  - name: promiseItems
+    display_name: 其他事项确认(TCS承诺事项)
+    group: head
+    layout: none
+    sources: [customs_declaration]
+    anchors: [承诺事项, 其他事项确认]
+    notes: json 有。草单通常无。promiseItem1/2/3 已忽略，本字段可空。
+
+goods:
+  - name: gno
+    display_name: 商品序号
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration]
+    anchors: [项号]
+    notes: 商品表列。有海关商品表以它为主。
+
+  - name: codeTs
+    display_name: 商品编号(T+S)
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [商品编号]
+    notes: HS 编码。
+
+  - name: gname
+    display_name: 商品名称
+    group: goods
+    layout: table_col
+    sources: [customs_declaration, packing_list, invoice]
+    anchors: [商品名称, 商品名称及规格型号, 货物名称, 物料名称]
+    notes: 海关商品表优先。别名交 #13。
+
+  - name: gmodel
+    display_name: 规格型号
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [申报要素, 规格型号]
+    notes: 恒信在「申报要素」列。规范编码 0|0|... 本期留原文，不在本 Issue 组装。
+
+  - name: brand
+    display_name: 品牌
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [品牌]
+    notes: 草单商品表有「品牌」列。json 曾标可忽略，按必须项收入。也可能写进 gmodel，重复时交 #18。
+
+  - name: declPrice
+    display_name: 申报单价
+    group: goods
+    layout: table_col
+    value_type: number
     sources: [customs_declaration, invoice]
-    anchors: [总价, 价税合计, Amount]
-    extractors: [rule, llm]
+    anchors: [单价]
+    notes: 海关商品表优先，发票补充。
+
+  - name: declTotal
+    display_name: 申报总价
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration, invoice]
+    anchors: [总价]
+    notes: 海关商品表优先。可能是公式。
+
+  - name: tradeCurr
+    display_name: 币制
+    group: goods
+    layout: table_col
+    sources: [customs_declaration, invoice]
+    anchors: [币制]
+    code_table: 币制
+    notes: 表上常是 HKD/USD 字母，转码交 #14。
+
+  - name: gqty
+    display_name: 成交数量
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration, packing_list, invoice]
+    anchors: [数量, 成交数量, 出货数量, Qty]
+    notes: 海关商品表优先。别名交 #13。
+
+  - name: gunit
+    display_name: 成交单位
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [计价单位, 成交单位]
+    code_table: 计量单位
+    notes: 名称转码交 #14。
+
+  - name: qty1
+    display_name: 法定第一数量
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [重量, 重量KG, 法定数量, 净重]
+    notes: 恒信「重量KG」进本字段还是 customNetWt，交 #18。本期目录两字段都收。
+
+  - name: unit1
+    display_name: 法定第一计量单位
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [法定第一计量单位, 法定单位]
+    code_table: 计量单位
+    notes: 草单常无独立列；有则抽。
+
+  - name: qty2
+    display_name: 法定第二数量
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration]
+    anchors: [法定第二数量]
+    notes: 仅部分商品有。无则空。
+
+  - name: unit2
+    display_name: 法定第二计量单位
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [法定第二计量单位]
+    code_table: 计量单位
+    notes: 仅部分商品有。无则空。
+
+  - name: cusOriginCountry
+    display_name: 原产国(地区)
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [原产国]
+    code_table: 国别
+    notes: 名称转码交 #14。
+
+  - name: destinationCountry
+    display_name: 最终目的国代码
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [最终目的国]
+    code_table: 国别
+    notes: 名称转码交 #14。
+
+  - name: districtCode
+    display_name: 境内目的地/境内货源地
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [境内货源地, 境内目的地]
+    code_table: 国内地区
+    notes: 出口为境内货源地。
+
+  - name: dutyMode
+    display_name: 征免方式
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [征免, 征免方式]
+    code_table: 征免方式
+    notes: 与表头 cutMode（征免性质）不是同一个字段。
+
+  - name: customGrossWet
+    display_name: 自定义毛重
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [毛重]
+    notes: json 原字段名 Wet。箱单可补充。无则空。
+
+  - name: customNetWt
+    display_name: 自定义净重
+    group: goods
+    layout: table_col
+    value_type: number
+    sources: [customs_declaration, packing_list]
+    anchors: [净重, 重量KG]
+    notes: 与 qty1 的分工交 #18。
+
+  - name: exgVersion
+    display_name: 加工成品单耗版本号
+    group: goods
+    layout: table_col
+    sources: [customs_declaration]
+    anchors: [单耗版本号]
+    notes: json 有。一般贸易常空。
