@@ -68,7 +68,10 @@ def test_unknown_table_raises() -> None:
 
 
 def test_ambiguous_name_returns_none() -> None:
-    tables = CodeTables(
+    tables = load_code_tables()
+    assert tables.lookup("海关口岸代码", "邮局海关") is None
+    assert tables.lookup("国内地区", "吉林其他") is None
+    isolated = CodeTables(
         tables={
             "海关口岸代码": CodeTable(
                 entries=[
@@ -78,8 +81,26 @@ def test_ambiguous_name_returns_none() -> None:
             )
         }
     )
-    assert tables.lookup("海关口岸代码", "邮局海关") is None
-    assert tables.reverse("海关口岸代码", "2206") == "邮局海关"
+    assert isolated.lookup("海关口岸代码", "邮局海关") is None
+    assert isolated.reverse("海关口岸代码", "2206") == "邮局海关"
+
+
+def test_full_customer_sheets_transcribed() -> None:
+    tables = load_code_tables()
+    counts = {name: len(table.entries) for name, table in tables.tables.items()}
+    assert counts == {
+        "包装种类": 17,
+        "成交方式": 7,
+        "计量单位": 124,
+        "监管方式": 101,
+        "运输方式": 20,
+        "征免性质": 104,
+        "国别": 267,
+        "国内地区": 1085,
+        "海关口岸代码": 1363,
+        "征减免税方式": 9,
+        "港口代码": 4270,
+    }
 
 
 def test_customer_original_xlsx_not_in_repo() -> None:

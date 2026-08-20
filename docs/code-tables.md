@@ -1,6 +1,6 @@
 # 码表加载（名称 ↔ code）
 
-运行时读取 [`src/docparse/schema/code_tables.yaml`](../src/docparse/schema/code_tables.yaml)。客户原件 `基础报关参数数据.xlsx` 不进仓库，YAML 只抄缩小夹具。
+运行时读取 [`src/docparse/schema/code_tables.yaml`](../src/docparse/schema/code_tables.yaml)。客户原件 `基础报关参数数据.xlsx` 不进仓库；YAML 按 sheet **全量转录**（海关公开码表，不是货单）。体积约 390KB，不需要数据库。
 
 本文件只回答「正式名怎么转 code」。不接版面、不接组装。俗称别名交 [#27](https://github.com/Baldwinzc/docparse/issues/27)。
 
@@ -28,11 +28,13 @@
 
 恒信草单「莲塘口岸」不是这张表的正式名，本模块返回空（#27）。
 
-## 夹具覆盖
+## 覆盖
 
-从客户参数表抄的 sheet（有则带，夹具若干行）：
+客户参数表有的 sheet 全收：
 
 包装种类、成交方式、计量单位、监管方式、运输方式、征免性质、国别、国内地区、海关口岸代码、征减免税方式、港口代码。
+
+同名对应多个 code（如海关口岸「邮局海关」、国内地区「吉林其他」）查找返回空，不瞎选。
 
 验收点：公路运输 → `4`，FOB → `3`，一般贸易 → `0110`。
 
@@ -48,4 +50,4 @@
 
 ## 增行
 
-改 YAML，不必改 Python。正式名以客户参数表为准；草单俗称不要写进夹具。
+改 YAML，不必改 Python。正式名以客户参数表为准；草单俗称不要写进本文件。
