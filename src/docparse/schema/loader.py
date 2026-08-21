@@ -74,10 +74,14 @@ class VocabGroup(BaseModel):
 class LayoutVocab(BaseModel):
     version: int = 1
     box: list[VocabGroup] = Field(default_factory=list)
+    kv: list[VocabGroup] = Field(default_factory=list)
     table: list[VocabGroup] = Field(default_factory=list)
 
     def box_labels(self) -> frozenset[str]:
         return frozenset(alias.text for group in self.box for alias in group.aliases)
+
+    def kv_labels(self) -> frozenset[str]:
+        return frozenset(alias.text for group in self.kv for alias in group.aliases)
 
     def table_tokens(self) -> tuple[str, ...]:
         seen: list[str] = []

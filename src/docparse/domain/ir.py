@@ -56,6 +56,7 @@ class KeyValue(BaseModel):
 
 class Table(BaseModel):
     header_row: int
+    header_rows: list[int] = Field(default_factory=list)
     headers: list[str] = Field(default_factory=list)
     header_cells: list[str] = Field(default_factory=list)
     rows: list[dict[str, str]] = Field(default_factory=list)

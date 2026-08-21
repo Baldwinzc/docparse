@@ -2,28 +2,44 @@
 
 运行时读取 [`src/docparse/schema/layout_vocab.yaml`](../src/docparse/schema/layout_vocab.yaml)。`layout.py` 不再维护 Python 词表常量。
 
-本文件只回答「哪些格子算框表标签 / 表头词」。抽出的 key、列名仍是格子原文，不在这里映射到报关字段（那是 #17 / #18）。
+本文件只回答「哪些格子算框表标签 / 商业单据键 / 表头词」。抽出的 key、列名仍是格子原文，不在这里映射到报关字段（那是 #17 / #18）。
 
-## 匹配规则（本期不改刀法）
+## 匹配规则（#15 刀法）
 
 | 词表 | 怎么比 |
 |---|---|
-| BOX | 去首尾空白和 `:` / `：` 后**整词相等** |
+| BOX | 去首尾空白和冒号后**整词相等** |
+| KV | 同 BOX；大小写不敏感。商业单据键，**不参与**「整行 BOX 不当表头」 |
 | TABLE | token 是单元格的**子串**；英文 token 大小写不敏感，且按字母数字词边界（`HS` 不打中 `THIS`） |
 | 表头行 | 一行至少 3 个非空格，且至少 **2** 个格子命中 TABLE token |
 | 例外 | 一行格子去冒号后**全部**是 BOX 标签（至少 3 个）→ 框表标签横排，不当表头。否则「毛重」进 TABLE 后会把恒信草单 r11 吃成表 |
+| 双行表头 | 表头下一行像翻译（≥2 格像列名、不像数字/日期）→ 并入 `headers`（中英文空格拼接），英文行不当 body[0]。`header_row` 仍是第一行，`header_rows` 记下两行 |
+| 冒号 | 半角 `:`、全角 `：`、小冒号 `﹕`（U+FE55）、竖排 `︰`。整格已是日期时间则不切；切完左侧像日期时间也不切。值里后续冒号保留 |
 
-双行表头（中文行 + 下一行英文翻译）并入 header，交 [#15](https://github.com/Baldwinzc/docparse/issues/15)，本词表只提供英文 token。
+几何策略仍是互斥：`same_cell` > `below` > `right`。多候选按值域排除交 [#29](https://github.com/Baldwinzc/docparse/issues/29)。
+
+`id` 只是分组，不接到 `fields.yaml`。值域约束以后挂在 id 上，不挂每条 alias。
 
 ## BOX
 
 恒信草单「一般贸易出口」框表标签迁入，并补 #12 对照表里这张出口草单没有的进出口镜像和空格。
 
-中文简称「毛重」「净重」收入 BOX。**G.W. / N.W. 不进 BOX**（样本里只当列名）。
-
-英文商业单据 KV（`Invoice No.`、`Bill To`、`DATE`、`SELLER` / `BUYER`、`CONTRACT NO.`、`SHIPPED PER`）本期不收，后期子 Issue 只补 BOX 英文 KV，TABLE 英文已在本文件。
+中文简称「毛重」「净重」收入 BOX。**G.W. / N.W. 不进 BOX / KV**（样本里只当列名）。
 
 每条别名的 `source` 写在 YAML 里（哪张表哪格，或 #12 依据）。
+
+## KV
+
+商业单据键，和 BOX 分开，避免一行三个英文标签被「整行 BOX」当成框表横排。
+
+- 发票号：`Invoice No.`、`INVOICE NO.`、`发票号INVOICE NO.`、`发票/INVOICE NO.`
+- 收货：`Bill To`
+- 日期：`DATE`、`Date`、`日期DATE`、`日期`
+- 买卖方：`SELLER` / `卖方SELLER` / `卖 方`，`BUYER` / `买方BUYER` / `买 方`
+- 合同号：`CONTRACT NO.`、`合同号CONTRACT NO.`
+- 运输：`SHIPPED PER`、`运输工具 SHIPPED PER`
+
+`same_cell` / `right` 认键时用 `box ∪ kv`。以后 `P.O. No.` 只加 YAML。
 
 ## TABLE
 
@@ -42,4 +58,4 @@
 
 ## 增别名
 
-改 YAML，不必改 Python。`id` 只是分组，不接到 `fields.yaml`。
+改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。

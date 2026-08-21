@@ -10,7 +10,17 @@ import re
 from docparse.domain.ir import Cell, KeyValue, Sheet, Table
 from docparse.schema.loader import load_layout_vocab
 
-_COLON = re.compile(r"^([^：:]{1,40}?)\s*[：:]\s*(.+)$")
+# 半角 / 全角 / 小冒号（U+FE55）/ 竖排冒号。不按客户码点特判。
+_COLON_CHARS = ":：﹕︰"
+_COLON_CLASS = re.escape(_COLON_CHARS)
+_SPLIT_COLON = re.compile(rf"^(.{{1,40}}?)\s*[{_COLON_CLASS}]\s*(.+)$")
+_TRAIL_COLON = re.compile(rf"[{_COLON_CLASS}]+$")
+_DATETIME_FULL = re.compile(
+    r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$"
+)
+_DATETIME_LEFT = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2})?$")
+_TIME_FULL = re.compile(r"^\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?$")
+_NUMERIC = re.compile(r"^[\d.,]+$")
 
 
 def split_sheet(sheet: Sheet) -> Sheet:
@@ -35,11 +45,18 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
         row_cells = sorted(by_row[row_idx], key=lambda c: c.column or 0)
         if not _is_header_row(row_cells):
             continue
-        headers = [c.value for c in row_cells]
+        header_rows = [row_idx]
+        extra_row = row_idx + 1
+        extra_cells = sorted(by_row.get(extra_row, []), key=lambda c: c.column or 0)
+        if extra_row not in used_rows and _is_translation_row(extra_cells):
+            header_rows.append(extra_row)
+            used_rows.add(extra_row)
+        headers = _compose_headers(row_cells, extra_cells if len(header_rows) > 1 else [])
         header_cells = [c.address for c in row_cells]
         columns = [c.column for c in row_cells]
+        body_start = header_rows[-1] + 1
         body: list[dict[str, str]] = []
-        for body_row in range(row_idx + 1, row_idx + 200):
+        for body_row in range(body_start, body_start + 200):
             if body_row not in by_row:
                 break
             used_rows.add(body_row)
@@ -55,12 +72,33 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
         tables.append(
             Table(
                 header_row=row_idx,
+                header_rows=header_rows,
                 headers=headers,
                 header_cells=header_cells,
                 rows=body,
             )
         )
     return tables
+
+
+def _compose_headers(row_cells: list[Cell], extra_cells: list[Cell]) -> list[str]:
+    extra_by_col = {c.column: c.value for c in extra_cells}
+    headers: list[str] = []
+    for cell in row_cells:
+        headers.append(_join_header(cell.value, extra_by_col.get(cell.column, "")))
+    return headers
+
+
+def _join_header(primary: str, extra: str) -> str:
+    left = primary.strip()
+    right = extra.strip()
+    if not right or right == left:
+        return left
+    if left in right:
+        return right
+    if right in left:
+        return left
+    return f"{left} {right}"
 
 
 def _table_tokens() -> tuple[str, ...]:
@@ -71,6 +109,30 @@ def _box_labels() -> frozenset[str]:
     return load_layout_vocab().box_labels()
 
 
+def _kv_labels() -> frozenset[str]:
+    return load_layout_vocab().kv_labels()
+
+
+def _all_kv_keys() -> frozenset[str]:
+    return _box_labels() | _kv_labels()
+
+
+def _norm_label(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", _label_text(text))
+    return cleaned.casefold()
+
+
+def _kv_norms() -> frozenset[str]:
+    return frozenset(_norm_label(item) for item in _all_kv_keys())
+
+
+def _is_known_key(text: str) -> bool:
+    cleaned = _label_text(text)
+    if cleaned in _all_kv_keys():
+        return True
+    return _norm_label(cleaned) in _kv_norms()
+
+
 def _token_in_text(token: str, text: str) -> bool:
     if token.isascii() and any(ch.isalpha() for ch in token):
         pattern = r"(?<![A-Za-z0-9])" + re.escape(token) + r"(?![A-Za-z0-9])"
@@ -79,11 +141,16 @@ def _token_in_text(token: str, text: str) -> bool:
 
 
 def _label_text(text: str) -> str:
-    return text.strip().rstrip("：:").strip()
+    return _TRAIL_COLON.sub("", text.strip()).strip()
+
+
+def _ends_with_colon(text: str) -> bool:
+    stripped = text.strip()
+    return bool(stripped) and stripped[-1] in _COLON_CHARS
 
 
 def _is_box_label_row(row_cells: list[Cell]) -> bool:
-    """框表标签横排（包装种类/件数/毛重…）不当表头。"""
+    """框表标签横排（包装种类/件数/毛重…）不当表头。只看 BOX，不看 KV。"""
     labels = _box_labels()
     hits = 0
     for cell in row_cells:
@@ -107,13 +174,58 @@ def _is_header_row(row_cells: list[Cell]) -> bool:
     return hits >= 2
 
 
+def _looks_like_data_cell(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if _DATETIME_FULL.match(stripped) or _TIME_FULL.match(stripped):
+        return True
+    if _NUMERIC.match(stripped) and any(ch.isdigit() for ch in stripped):
+        return True
+    return False
+
+
+def _looks_like_header_cell(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped or _looks_like_data_cell(stripped):
+        return False
+    if any(_token_in_text(token, stripped) for token in _table_tokens()):
+        return True
+    letters = [ch for ch in stripped if ch.isalpha()]
+    if len(letters) < 3:
+        return False
+    ascii_letters = [ch for ch in letters if ch.isascii()]
+    return len(ascii_letters) >= 3 and len(ascii_letters) >= len(letters) * 0.6
+
+
+def _is_translation_row(row_cells: list[Cell]) -> bool:
+    """中文表头下一行是英文翻译 / 补充表头，不当数据行。"""
+    if len(row_cells) < 2:
+        return False
+    if _is_box_label_row(row_cells):
+        return False
+    data_like = 0
+    header_like = 0
+    for cell in row_cells:
+        text = cell.value
+        if _looks_like_data_cell(text):
+            data_like += 1
+        elif _looks_like_header_cell(text):
+            header_like += 1
+    if data_like >= 2:
+        return False
+    return header_like >= 2 and header_like > data_like
+
+
 def _table_cells(tables: list[Table], cells: list[Cell]) -> set[str]:
     if not tables:
         return set()
     table_rows: set[int] = set()
     for table in tables:
-        table_rows.add(table.header_row)
-        table_rows.update(range(table.header_row + 1, table.header_row + 1 + len(table.rows)))
+        header_rows = table.header_rows or [table.header_row]
+        table_rows.update(header_rows)
+        start = max(header_rows) + 1
+        table_rows.update(range(start, start + len(table.rows)))
     return {cell.address for cell in cells if cell.row in table_rows}
 
 
@@ -147,12 +259,25 @@ def _detect_key_values(cells: list[Cell], occupied: set[str]) -> list[KeyValue]:
     return found
 
 
-def _same_cell_colon(cell: Cell) -> KeyValue | None:
-    match = _COLON.match(cell.value)
+def _split_colon(text: str) -> tuple[str, str] | None:
+    match = _SPLIT_COLON.match(text.strip())
     if not match:
         return None
     key, value = match.group(1).strip(), match.group(2).strip()
     if not key or not value:
+        return None
+    return key, value
+
+
+def _same_cell_colon(cell: Cell) -> KeyValue | None:
+    text = cell.value.strip()
+    if _DATETIME_FULL.match(text) or _TIME_FULL.match(text):
+        return None
+    split = _split_colon(text)
+    if not split:
+        return None
+    key, value = split
+    if _DATETIME_LEFT.match(key) or _TIME_FULL.match(key):
         return None
     if any(_token_in_text(token, key) for token in _table_tokens()):
         return None
@@ -167,12 +292,12 @@ def _same_cell_colon(cell: Cell) -> KeyValue | None:
 
 def _looks_like_label(text: str) -> bool:
     stripped = text.strip()
-    cleaned = stripped.rstrip("：:").strip()
-    if not cleaned or len(cleaned) > 20:
+    cleaned = _label_text(stripped)
+    if not cleaned or len(cleaned) > 40:
         return False
-    if cleaned in _box_labels():
+    if _is_known_key(cleaned):
         return True
-    if stripped.endswith((":", "：")) and not re.fullmatch(r"[\d.\-]+", cleaned):
+    if _ends_with_colon(stripped) and not re.fullmatch(r"[\d.\-]+", cleaned):
         return True
     return False
 
@@ -190,9 +315,9 @@ def _value_below(
     other = by_pos.get((below_row, cell.column))
     if other is None or other.address in occupied or not other.value:
         return None
-    if _looks_like_label(other.value) and not _COLON.match(other.value):
+    if _same_cell_colon(other) is not None or _looks_like_label(other.value):
         return None
-    key = cell.value.strip().rstrip("：:").strip()
+    key = _label_text(cell.value)
     return KeyValue(
         key=key,
         value=other.value,
@@ -210,14 +335,14 @@ def _value_right(
     if cell.row is None or cell.column is None:
         return None
     text = cell.value.strip()
-    key = text.rstrip("：:").strip()
-    if not (text.endswith((":", "：")) or key in _box_labels()):
+    key = _label_text(text)
+    if not (_ends_with_colon(text) or _is_known_key(key)):
         return None
     right_col = _merge_right(cell) + 1
     other = by_pos.get((cell.row, right_col))
     if other is None or other.address in occupied or not other.value:
         return None
-    if _looks_like_label(other.value):
+    if _same_cell_colon(other) is not None or _looks_like_label(other.value):
         return None
     return KeyValue(
         key=key,
