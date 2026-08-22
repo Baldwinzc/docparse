@@ -28,7 +28,7 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/表头（#9）；PDF 需可选依赖；图片未接 OCR | PDF / 国光冒号加强 / 扫描件 OCR |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV（#9 #15）；PDF 需可选依赖；图片未接 OCR | PDF / 扫描件 OCR |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 | 按真实样本补规则 / LLM |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 | 目录已在 #12，映射交 #17/#18 |
@@ -56,7 +56,7 @@ docparse/
 
 ## 模块接口约定
 
-Excel 框表拆分（#9）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。BOX / TABLE 词表在 `schema/layout_vocab.yaml`（#13），`layout.py` 读文件不再维护 Python 常量。本地对眼用 `python -m docparse.cli layout file.xlsx`。
+Excel 框表拆分（#9 / #15）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。词表在 `schema/layout_vocab.yaml`（#13）：BOX 框表标签、KV 商业单据键、TABLE 表头词。`layout.py` 读文件不再维护 Python 常量。刀法：冒号变体、日期时间不切、双行表头并入 `headers`（`header_rows` 可多行）。值域排除交 #29。本地对眼用 `python -m docparse.cli layout file.xlsx`。
 
 名称转 code（#14）：`schema/code_tables.yaml` 全量转录 + `load_code_tables().lookup(表, 名称)`。精确匹配，未知返回空。海关口岸（四位）与港口代码分开。xlsx 原件不入库。俗称别名交 #27。
 

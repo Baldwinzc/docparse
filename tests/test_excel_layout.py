@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -12,10 +13,9 @@ from openpyxl.styles import Border, Side
 
 from docparse.adapters.parsers.excel import parse_excel
 
-REAL_HENGXIN = Path(
-    "/Users/chenzecong/Documents/泰洲数据/AI识别Demo/AI识别Demo/"
-    "（恒信）一般贸易草单HDX260251BLU.xlsx"
-)
+_DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
+REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
+REAL_GUOGUANG = _DEMO / "（国光）箱单发票合同26VN0502-1.xlsx"
 
 
 def _thin() -> Border:
@@ -203,6 +203,108 @@ def test_box_label_row_is_not_a_table() -> None:
     assert 17 in header_rows
 
 
+def _kv_colon_workbook() -> bytes:
+    book = Workbook()
+    packing = book.active
+    packing.title = "装箱单"
+    packing["I4"] = "Invoice No.﹕"
+    packing["J4"] = "HDX260251"
+    packing["I5"] = "Date：2026-8-6"
+    packing["A7"] = "Bill To : BLU PRECISION LIMITED"
+
+    invoice = book.create_sheet("发票")
+    invoice["A6"] = "日期DATE:"
+    invoice["B6"] = datetime(2026, 3, 15, 10, 30, 0)
+    invoice["F6"] = "发票号INVOICE NO.:"
+    invoice["G6"] = "26VN0502-1"
+    invoice["A11"] = "运输工具 SHIPPED PER:"
+    invoice["B11"] = "BY TRUCK"
+
+    for row in packing.iter_rows(min_row=4, max_row=7, min_col=1, max_col=10):
+        for cell in row:
+            cell.border = _thin()
+    for row in invoice.iter_rows(min_row=6, max_row=11, min_col=1, max_col=7):
+        for cell in row:
+            cell.border = _thin()
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def _dual_header_workbook() -> bytes:
+    book = Workbook()
+    contract = book.active
+    contract.title = "合同"
+    contract["A14"] = "(1)货物名称"
+    contract["C14"] = "(3)数量"
+    contract["E14"] = "(5)单价"
+    contract["F14"] = "(6)总值"
+    contract["A15"] = "Description"
+    contract["C15"] = "Quantity"
+    contract["E15"] = "Unit Price(HKD)"
+    contract["F15"] = "Total Amount(HKD)"
+    contract["A16"] = 1
+    contract["C16"] = 150
+    contract["E16"] = 98
+    contract["F16"] = 14700
+    contract["A17"] = 2
+    contract["C17"] = 73
+    contract["E17"] = 1398
+    contract["F17"] = 10526.94
+
+    for row in contract.iter_rows(min_row=14, max_row=17, min_col=1, max_col=6):
+        for cell in row:
+            cell.border = _thin()
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_special_colon_and_datetime_stay_in_key_values() -> None:
+    document = parse_excel(_kv_colon_workbook(), file_id="k1", filename="kv.xlsx")
+    packing = next(sheet for sheet in document.sheets if sheet.name == "装箱单")
+    pairs = _pairs(packing)
+    assert pairs["Invoice No."] == "HDX260251"
+    assert pairs["Date"] == "2026-8-6"
+    assert pairs["Bill To"] == "BLU PRECISION LIMITED"
+
+    invoice = next(sheet for sheet in document.sheets if sheet.name == "发票")
+    pairs = _pairs(invoice)
+    assert pairs["日期DATE"] == "2026-03-15 10:30:00"
+    assert pairs["发票号INVOICE NO."] == "26VN0502-1"
+    assert pairs["运输工具 SHIPPED PER"] == "BY TRUCK"
+    assert "2026-03-15 10" not in pairs
+    assert all("10:30:00" not in item.key for item in invoice.key_values)
+
+
+def test_dual_header_english_row_is_not_goods() -> None:
+    document = parse_excel(_dual_header_workbook(), file_id="d1", filename="contract.xlsx")
+    contract = document.sheets[0]
+    assert contract.tables
+    table = contract.tables[0]
+    assert table.header_row == 14
+    assert table.header_rows == [14, 15]
+    assert any("货物名称" in header for header in table.headers)
+    assert any("Description" in header for header in table.headers)
+    assert table.rows
+    first = table.rows[0]
+    assert "Description" not in first.values()
+    assert "1" in first.values()
+    assert "150" in first.values()
+
+
+def test_hengxin_draft_goods_table_still_single_header() -> None:
+    document = parse_excel(_box_workbook(), file_id="f1", filename="draft.xlsx")
+    draft = next(sheet for sheet in document.sheets if sheet.name == "一般贸易出口")
+    table = draft.tables[0]
+    assert table.header_row == 17
+    assert table.header_rows == [17]
+    assert table.rows[0]["项号"] == "1"
+    assert table.rows[0]["商品编号"] == "9111900000"
+
+
 @pytest.mark.skipif(not REAL_HENGXIN.exists(), reason="本地恒信样本不在 CI")
 def test_hengxin_sample_keeps_formulas_and_goods_table() -> None:
     document = parse_excel(
@@ -223,3 +325,40 @@ def test_hengxin_sample_keeps_formulas_and_goods_table() -> None:
     first = draft.tables[0].rows[0]
     assert first["项号"] == "1"
     assert first["商品编号"] == "9111900000"
+
+
+@pytest.mark.skipif(not REAL_HENGXIN.exists(), reason="本地恒信样本不在 CI")
+def test_hengxin_packing_and_contract_layout() -> None:
+    document = parse_excel(
+        REAL_HENGXIN.read_bytes(),
+        file_id="hx2",
+        filename=REAL_HENGXIN.name,
+    )
+    packing = next(sheet for sheet in document.sheets if "箱" in sheet.name)
+    pairs = _pairs(packing)
+    assert pairs.get("Invoice No.") == "HDX260251"
+    contract = next(sheet for sheet in document.sheets if sheet.name == "合同")
+    assert contract.tables
+    table = contract.tables[0]
+    assert table.rows
+    assert "Description" not in table.rows[0].values()
+
+
+@pytest.mark.skipif(not REAL_GUOGUANG.exists(), reason="本地国光样本不在 CI")
+def test_guoguang_invoice_number_and_date_in_kv() -> None:
+    document = parse_excel(
+        REAL_GUOGUANG.read_bytes(),
+        file_id="gg",
+        filename=REAL_GUOGUANG.name,
+    )
+    packing = next(sheet for sheet in document.sheets if "箱" in sheet.name)
+    pairs = _pairs(packing)
+    date_keys = [key for key in pairs if "DATE" in key.upper() or key.startswith("日期")]
+    assert date_keys, pairs
+    date_value = pairs[date_keys[0]]
+    assert "2026" in date_value or date_value.replace(".", "").isdigit()
+    invoice_sheet = next(sheet for sheet in document.sheets if "发票" in sheet.name)
+    invoice_pairs = _pairs(invoice_sheet)
+    invoice_keys = [key for key in invoice_pairs if "INVOICE" in key.upper() or "发票" in key]
+    assert invoice_keys, invoice_pairs
+    assert any("26VN0502" in invoice_pairs[key] for key in invoice_keys)

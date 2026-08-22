@@ -1,15 +1,12 @@
-# 版面词表（Issue #13）
-# BOX：去冒号后整词相等。TABLE：子串匹配（英文大小写不敏感），一行 ≥2 命中才当表头。
+# 版面词表（Issue #13 / #15）
+# BOX：去冒号后整词相等；整行都是 BOX 才不当表头。
+# KV：商业单据键，匹配同 BOX，但不参与「整行 BOX 不当表头」。
+# TABLE：子串匹配（英文大小写不敏感），一行 ≥2 命中才当表头。
 # 抽出的 key / 列名仍是格子原文，不在这里映射到 fields.yaml。
 # 客户原件不进仓库；source 只引用样本路径，方便对照。
-#
-# 本期不收（后期子 Issue：商业单据英文 KV 别名 BOX）：
-#   Invoice No. 恒信装箱单!I4；Bill To 恒信装箱单!A7；
-#   DATE / 日期DATE 国光总箱单!A6；SELLER / BUYER 国光总箱单!A8/F8；
-#   CONTRACT NO. 国光总箱单!G7；SHIPPED PER 国光发票!A11；
-#   G.W. / N.W. 当框表键（样本里只当列名）。
-# 双行表头（中文行 + 英文翻译行并入 header）交 #15，不在本文件改刀法。
+# G.W. / N.W. 不进 BOX / KV（样本里只当列名）。
 # TABLE 不加「单位」（防误伤「生产销售单位」）。
+# 值域排除（多候选按形状丢掉不像的）交 #29，本文件先不写 value:。
 
 version: 1
 
@@ -229,6 +226,66 @@ box:
     aliases:
       - text: 申报地海关
         source: "#12 customMaster。恒信 G2 只有「（深惠州关）」，无此标签"
+
+kv:
+  - id: invoice_no
+    aliases:
+      - text: "Invoice No."
+        source: "恒信装箱单!I4（格末 U+FE55 小冒号，值在右格）"
+      - text: "INVOICE NO."
+        source: "国光发票!F6「发票号INVOICE NO.」"
+      - text: "发票号INVOICE NO."
+        source: 国光发票!F6
+      - text: "发票/INVOICE NO."
+        source: 国光总箱单 发票号混写格
+
+  - id: bill_to
+    aliases:
+      - text: Bill To
+        source: "恒信装箱单!A7「Bill To : BLU PRECISION LIMITED」"
+
+  - id: date
+    aliases:
+      - text: DATE
+        source: "国光总箱单!A6「日期DATE:」；值在右格，可能是 Excel 日期时间"
+      - text: Date
+        source: "恒信装箱单!I5「Date：2026-8-6」"
+      - text: 日期DATE
+        source: 国光总箱单!A6
+      - text: 日期
+        source: 国光「日期DATE」中文短写
+
+  - id: seller
+    aliases:
+      - text: SELLER
+        source: 国光总箱单!A8
+      - text: 卖方SELLER
+        source: 国光总箱单卖方格
+      - text: 卖 方
+        source: "恒信合同!A5「卖 方:」"
+
+  - id: buyer
+    aliases:
+      - text: BUYER
+        source: 国光总箱单买方格
+      - text: 买方BUYER
+        source: 国光发票!A6
+      - text: 买 方
+        source: 恒信合同!A8
+
+  - id: contract_no
+    aliases:
+      - text: "CONTRACT NO."
+        source: 国光总箱单!G7
+      - text: "合同号CONTRACT NO."
+        source: 国光总箱单合同号混写格
+
+  - id: shipped_per
+    aliases:
+      - text: SHIPPED PER
+        source: 国光发票!A11
+      - text: 运输工具 SHIPPED PER
+        source: "国光发票!A11「运输工具 SHIPPED PER:」"
 
 table:
   - id: gno

@@ -239,7 +239,15 @@ def test_layout_vocab_covers_issue_aliases() -> None:
     assert "申报要素" in table
     assert "货物名称" in table
     assert "单位" not in table
-    assert all(alias.source for group in [*vocab.box, *vocab.table] for alias in group.aliases)
+    kv = vocab.kv_labels()
+    assert "Invoice No." in kv
+    assert "日期DATE" in kv
+    assert "SHIPPED PER" in kv
+    assert "Invoice No." not in box
+    assert "G.W." not in kv
+    assert all(
+        alias.source for group in [*vocab.box, *vocab.kv, *vocab.table] for alias in group.aliases
+    )
 
 
 def test_customer_originals_not_in_repo() -> None:
