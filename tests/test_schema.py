@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from docparse.schema.loader import load_layout_vocab, load_schema
+from docparse.schema.loader import load_layout_vocab, load_schema, load_sheet_roles
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -257,6 +257,22 @@ def test_layout_vocab_covers_issue_aliases() -> None:
     assert vocab.value_for_key("出口日期") is ie_date.value
     assert vocab.value_for_key("货物存放地点") is None
     assert vocab.group_for_key("Invoice No.") is invoice
+
+
+def test_sheet_roles_cover_issue_roles() -> None:
+    catalog = load_sheet_roles()
+    by_id = {role.id: role for role in catalog.roles}
+    assert set(by_id) == {"draft", "packing", "invoice", "contract", "auxiliary"}
+    assert by_id["draft"].consume == "primary"
+    assert {by_id[name].consume for name in ("packing", "invoice", "contract")} == {"supplement"}
+    assert by_id["auxiliary"].consume == "exclude"
+    assert catalog.unknown_consume == "exclude"
+    titles = {signal.text for role in catalog.roles for signal in role.signals.titles}
+    assert "一般贸易出口" in titles
+    assert "PACKING LIST" in titles
+    assert "SALES CONTRACT" in titles
+    invoice = next(signal for signal in by_id["invoice"].signals.titles if signal.text == "INVOICE")
+    assert invoice.match == "exact"
 
 
 def test_customer_originals_not_in_repo() -> None:

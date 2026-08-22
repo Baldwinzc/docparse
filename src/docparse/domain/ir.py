@@ -67,6 +67,10 @@ class Sheet(BaseModel):
     cells: list[Cell] = Field(default_factory=list)
     key_values: list[KeyValue] = Field(default_factory=list)
     tables: list[Table] = Field(default_factory=list)
+    role: str = "unknown"
+    role_confidence: float = 0.0
+    consume: str = "exclude"
+    role_hits: list[str] = Field(default_factory=list)
 
 
 class Evidence(BaseModel):

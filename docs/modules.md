@@ -10,7 +10,7 @@ docparse/
 │   ├── cli.py                 本地命令行
 │   ├── config.py              环境变量
 │   ├── domain/                任务 / IR / 字段（稳定契约）
-│   ├── schema/                字段表 YAML + 版面词表 YAML + 码表 YAML
+│   ├── schema/                字段表 YAML + 版面词表 YAML + 码表 YAML + sheet 角色 YAML
 │   ├── pipeline/              固定步骤编排
 │   │   └── steps/             与主链路节点一一对应
 │   ├── extraction/            分类、抽字段、校验
@@ -29,8 +29,8 @@ docparse/
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
 | 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 需可选依赖；图片未接 OCR | PDF / 扫描件 OCR |
-| 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables | 非必要不改契约名 |
-| 文档分类 | `extraction/classify.py` | 关键词占位 | 按真实样本补规则 / LLM |
+| 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
+| 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 | 目录已在 #12，映射交 #17/#18 |
 | 标准化与校验 | `extraction/validate.py` | 格式 / 必填 / 证据 | 金额、日期、跨字段 |
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
@@ -59,6 +59,8 @@ docparse/
 Excel 框表拆分（#9 / #15 / #29）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。词表在 `schema/layout_vocab.yaml`（#13）：BOX 框表标签、KV 商业单据键、TABLE 表头词。`layout.py` 读文件不再维护 Python 常量。刀法：冒号变体、日期时间不切、双行表头并入 `headers`（`header_rows` 可多行）。多候选先按 id 上的 `value:` 滤形状，再按 `same_cell` > `below` > `right` 决胜。新 xlsx 往哪加见 #31。本地对眼用 `python -m docparse.cli layout file.xlsx`。
 
 名称转 code（#14）：`schema/code_tables.yaml` 全量转录 + `load_code_tables().lookup(表, 名称)`。精确匹配，未知返回空。海关口岸（四位）与港口代码分开。xlsx 原件不入库。俗称别名交 #27。
+
+sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`。每张 sheet 标 `draft` / `packing` / `invoice` / `contract` / `auxiliary` / `unknown`，并带 `consume`（primary / supplement / exclude）。辅助表和 unknown 的 KV / table 留在 IR，不进下一张报关单。新叫法加 YAML，不按公司写分支。见 [sheet-roles.md](sheet-roles.md)。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 

@@ -1,0 +1,184 @@
+# sheet 角色（Issue #16）
+# 每张 sheet 一种角色。打分看标题 / 已拆 KV 键 / 表头，不看公司名。
+# 文件名只加很弱的分，不能单独定角色。
+# consume：primary 主源 / supplement 只补空 / exclude 不进下一张报关单。
+# auxiliary 与 unknown 都是 exclude：格子留在 IR，#17/#18/#19 不读。
+# 新叫法加信号；新单据类型加 role。不要写 if 公司。
+
+version: 1
+min_score: 3
+filename_weight: 1
+unknown_consume: exclude
+
+roles:
+  - id: draft
+    consume: primary
+    signals:
+      titles:
+        - text: 一般贸易出口
+          source: 恒信草单 sheet 名
+        - text: 中华人民共和国海关出口货物报关单
+          source: 恒信草单 一般贸易出口!A1
+        - text: 出口货物报关单
+          source: 标题短写；本张恒信是全称
+        - text: 草单
+          match: exact
+          source: 常见 sheet 名。exact，避免打中长句里的「草单」
+      keys:
+        - text: 境内发货人
+          source: 恒信草单 一般贸易出口!A3
+        - text: 监管方式
+          source: 恒信草单 一般贸易出口!E7
+        - text: 征免性质
+          source: 恒信草单 一般贸易出口!I7
+        - text: 出境关别
+          source: 恒信草单 一般贸易出口!E3
+        - text: 申报日期
+          source: 恒信草单 一般贸易出口!J3
+        - text: 预录入编号
+          source: 恒信草单 一般贸易出口!A2
+      headers:
+        - text: 项号
+          source: 恒信草单 一般贸易出口!A17
+        - text: 商品编号
+          source: 恒信草单 一般贸易出口!B17
+        - text: 申报要素
+          source: 恒信草单 一般贸易出口!D17
+      filename:
+        - text: 草单
+          source: 文件名提示，不能单独定角色
+        - text: 报关单
+          source: 文件名提示，不能单独定角色
+
+  - id: packing
+    consume: supplement
+    signals:
+      titles:
+        - text: PACKING LIST
+          source: 恒信装箱单!A1；国光总箱单!E5
+        - text: 装箱单
+          source: 国光总箱单!E5「装箱单 PACKING LIST」；简体 sheet 名
+        - text: 裝箱單
+          source: 恒信装箱单 sheet 名（繁体）
+        - text: 总箱单
+          source: 国光 sheet 名
+      keys:
+        - text: Invoice No.
+          source: 恒信装箱单!I4。发票也可能有，靠标题 / 表头拆开
+        - text: 发票/INVOICE NO.
+          source: 国光总箱单!A7
+        - text: Bill To
+          source: 恒信装箱单!A7
+      headers:
+        - text: N.W.
+          source: 恒信装箱单!H11
+        - text: G.W
+          source: 恒信装箱单!I11「G.W .(Kg)」
+        - text: 出货数量
+          source: 国光总箱单!D12
+        - text: 总箱数
+          source: 国光总箱单!F12
+        - text: Packing
+          source: 恒信装箱单!G11「Packing (箱)」
+      filename:
+        - text: 箱单
+          source: 文件名提示，不能单独定角色
+        - text: packing
+          source: 文件名提示，不能单独定角色
+
+  - id: invoice
+    consume: supplement
+    signals:
+      titles:
+        - text: COMMERCIAL INVOICE
+          source: 国光发票!D5「发 票 COMMERCIAL INVOICE」
+        - text: INVOICE
+          match: exact
+          source: 恒信发票!A1。整格相等，避免打中「Invoice No.」
+        - text: 发票
+          match: exact
+          source: 国光 / 恒信 sheet 名（国光带尾空格）。exact，避免打中「发票号」
+      keys:
+        - text: 发票号INVOICE NO.
+          source: 国光发票!F6
+        - text: 运输工具 SHIPPED PER
+          source: 国光发票!A11
+      headers:
+        - text: Unit Price
+          source: 恒信发票!E11
+        - text: Amount
+          source: 恒信发票!F11
+        - text: 汇总价
+          source: 国光发票!G16
+        - text: 总值
+          source: 恒信发票!F11「Amount(HKD)  (总值)」
+      filename:
+        - text: 发票
+          source: 文件名提示，不能单独定角色
+        - text: invoice
+          source: 文件名提示，不能单独定角色
+
+  - id: contract
+    consume: supplement
+    signals:
+      titles:
+        - text: SALES CONTRACT
+          source: 恒信合同!C2
+        - text: 合同
+          match: exact
+          source: 恒信合同!C1「合     同」；sheet 名。exact，避免打中「合同号」
+      keys:
+        - text: 卖 方
+          match: exact
+          source: 恒信合同!A5。exact，避免打中「卖方SELLER」
+        - text: 买 方
+          match: exact
+          source: 恒信合同!A8。exact，避免打中「买方BUYER」
+        - text: 合同号
+          match: exact
+          source: 恒信合同!F6（格内带冒号）。exact，避免打中「合同号CONTRACT NO.」
+        - text: CONTRACT NO.
+          match: exact
+          source: 合同页短键。exact，国光箱单混写格不单独定合同
+      headers:
+        - text: Description
+          source: 恒信合同!A15 英文表头行
+        - text: Total Amount
+          source: 恒信合同!F15
+      filename:
+        - text: 合同
+          source: 文件名提示，不能单独定角色
+        - text: contract
+          source: 文件名提示，不能单独定角色
+
+  - id: auxiliary
+    consume: exclude
+    lookup_pairs: true
+    signals:
+      titles:
+        - text: 对照
+          source: 辅助表常见标题；本张恒信 sheet 名是 Sheet1 / 1 / Sheet3
+        - text: 台账
+          source: 历史台账常见标题
+        - text: 内部货号
+          source: 内部货号表常见标题
+      headers:
+        - text: 恒信编号
+          weight: 5
+          source: 恒信内部货号表 1!E1。内部编号，不当箱单
+        - text: ERP编号
+          weight: 5
+          source: 恒信内部货号表 1!O1
+        - text: SAP编号
+          weight: 5
+          source: 恒信历史台账 Sheet3!K1
+        - text: 报关单号
+          weight: 5
+          source: 恒信历史台账 Sheet3!C1。已报关台账，不当草单
+        - text: 报关日期
+          weight: 4
+          source: 恒信历史台账 Sheet3!B1
+        - text: 出口发票号
+          weight: 3
+          source: 恒信历史台账 Sheet3!D1
+      filename: []
