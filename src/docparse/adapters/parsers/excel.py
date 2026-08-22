@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from docparse.adapters.parsers.layout import split_sheet
 from docparse.domain.ir import Cell, CellBorder, DocumentIR, Sheet
+from docparse.extraction.sheet_role import classify_sheets
 
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _SHEET_REF = re.compile(
@@ -50,17 +51,21 @@ def parse_excel(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
     _resolve_formulas(grids, pending)
 
     sheets = [split_sheet(sheet) for sheet in parsed]
-    parts = [
-        f"{sheet.name}!{cell.address}:{cell.value}" for sheet in sheets for cell in sheet.cells
-    ]
-    return DocumentIR(
+    document = DocumentIR(
         document_id=uuid4().hex,
         file_id=file_id,
         filename=filename,
         media_type=_XLSX,
         sheets=sheets,
-        raw_text="\n".join(parts),
+        raw_text="",
     )
+    classify_sheets(document)
+    document.raw_text = "\n".join(
+        f"{sheet.name}!{cell.address}:{cell.value}"
+        for sheet in document.sheets
+        for cell in sheet.cells
+    )
+    return document
 
 
 def _read_sheet(raw_sheet, value_sheet) -> tuple[Sheet, dict[str, str], list[Cell]]:
@@ -221,7 +226,7 @@ def _parse_csv(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
             cells.append(Cell(address=address, value=cleaned, row=r_idx, column=c_idx))
             parts.append(f"{address}:{cleaned}")
     sheet = split_sheet(Sheet(name="Sheet1", cells=cells))
-    return DocumentIR(
+    document = DocumentIR(
         document_id=uuid4().hex,
         file_id=file_id,
         filename=filename,
@@ -229,3 +234,4 @@ def _parse_csv(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
         sheets=[sheet],
         raw_text="\n".join(parts),
     )
+    return classify_sheets(document)

@@ -43,6 +43,10 @@ def _layout(path: Path) -> int:
         "sheets": [
             {
                 "name": sheet.name,
+                "role": sheet.role,
+                "consume": sheet.consume,
+                "role_confidence": sheet.role_confidence,
+                "role_hits": sheet.role_hits,
                 "cells": len(sheet.cells),
                 "key_values": [item.model_dump() for item in sheet.key_values],
                 "tables": [table.model_dump() for table in sheet.tables],

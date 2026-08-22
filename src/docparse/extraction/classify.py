@@ -1,5 +1,6 @@
 from docparse.domain.ir import DocumentIR
 from docparse.domain.models import DocumentType
+from docparse.extraction.sheet_role import classify_sheets
 
 _HINTS: list[tuple[DocumentType, tuple[str, ...]]] = [
     (
@@ -14,6 +15,7 @@ _HINTS: list[tuple[DocumentType, tuple[str, ...]]] = [
 
 
 def classify_document(document: DocumentIR) -> DocumentIR:
+    classify_sheets(document)
     text = "\n".join([document.filename, document.iter_text()]).lower()
     best: DocumentType = DocumentType.UNKNOWN
     score = 0

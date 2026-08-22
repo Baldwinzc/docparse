@@ -137,6 +137,64 @@ class LayoutVocab(BaseModel):
         return group.value
 
 
+_ROLE_IDS = frozenset({"draft", "packing", "invoice", "contract", "auxiliary", "unknown"})
+_CONSUME_IDS = frozenset({"primary", "supplement", "exclude"})
+
+
+class RoleSignal(BaseModel):
+    text: str
+    source: str = ""
+    weight: int = 2
+    match: str = "contains"
+
+    @model_validator(mode="after")
+    def check_match(self) -> "RoleSignal":
+        if self.match not in {"contains", "exact"}:
+            raise ValueError(f"unknown signal match: {self.match}")
+        return self
+
+
+class RoleSignals(BaseModel):
+    titles: list[RoleSignal] = Field(default_factory=list)
+    keys: list[RoleSignal] = Field(default_factory=list)
+    headers: list[RoleSignal] = Field(default_factory=list)
+    filename: list[RoleSignal] = Field(default_factory=list)
+
+
+class SheetRole(BaseModel):
+    id: str
+    consume: str
+    lookup_pairs: bool = False
+    signals: RoleSignals = Field(default_factory=RoleSignals)
+
+    @model_validator(mode="after")
+    def check_ids(self) -> "SheetRole":
+        if self.id not in _ROLE_IDS:
+            raise ValueError(f"unknown sheet role: {self.id}")
+        if self.consume not in _CONSUME_IDS:
+            raise ValueError(f"unknown consume: {self.consume}")
+        return self
+
+
+class SheetRoles(BaseModel):
+    """sheet 角色信号。新叫法加 YAML，不写公司分支。"""
+
+    version: int = 1
+    min_score: int = 3
+    filename_weight: int = 1
+    unknown_consume: str = "exclude"
+    roles: list[SheetRole] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_unknown_consume(self) -> "SheetRoles":
+        if self.unknown_consume not in _CONSUME_IDS:
+            raise ValueError(f"unknown consume: {self.unknown_consume}")
+        return self
+
+    def role(self, role_id: str) -> SheetRole | None:
+        return next((item for item in self.roles if item.id == role_id), None)
+
+
 class CodeEntry(BaseModel):
     code: str
     name: str
@@ -209,6 +267,13 @@ def load_layout_vocab() -> LayoutVocab:
     path = Path(__file__).with_name("layout_vocab.yaml")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return LayoutVocab.model_validate(data)
+
+
+@lru_cache(maxsize=1)
+def load_sheet_roles() -> SheetRoles:
+    path = Path(__file__).with_name("sheet_roles.yaml")
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return SheetRoles.model_validate(data)
 
 
 @lru_cache(maxsize=1)
