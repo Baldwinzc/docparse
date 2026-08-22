@@ -25,6 +25,19 @@ class FieldSpec(BaseModel):
     ignore: bool = False
     notes: str = ""
     code_table: str | None = None
+    # 单 sheet 表头映射（#17）。keep=原样；skip=本层不映射；
+    # trailing_code=末尾海关代码拆给 split_target。
+    head_map: str = "keep"
+    split_target: str | None = None
+
+    @model_validator(mode="after")
+    def check_head_map(self) -> "FieldSpec":
+        allowed = {"keep", "skip", "trailing_code"}
+        if self.head_map not in allowed:
+            raise ValueError(f"unknown head_map: {self.head_map}")
+        if self.head_map == "trailing_code" and not self.split_target:
+            raise ValueError(f"{self.name} trailing_code requires split_target")
+        return self
 
 
 class PortMapping(BaseModel):

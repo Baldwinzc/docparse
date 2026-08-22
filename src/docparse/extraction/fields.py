@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 
 from docparse.adapters.llm.openai_compat import LLMNotConfiguredError, OpenAICompatClient
 from docparse.domain.fields import ExtractedField, FieldStatus
 from docparse.domain.ir import DocumentIR, Evidence
+from docparse.extraction.head_map import map_document_head
 from docparse.schema.loader import FieldSpec, Schema, load_schema
 
 
@@ -15,10 +17,31 @@ def extract_fields(
 ) -> list[ExtractedField]:
     schema = schema or load_schema()
     client = llm or OpenAICompatClient()
+    mapped: list[ExtractedField] = []
+    for document in documents:
+        mapped.extend(map_document_head(document, schema))
+    by_name: dict[str, list[ExtractedField]] = defaultdict(list)
+    for field in mapped:
+        by_name[field.name].append(field)
+    used_sheet_kv = any(
+        sheet.key_values for document in documents for sheet in document.sheets
+    )
     results: list[ExtractedField] = []
     for spec in schema.fields:
-        field = _extract_one(spec, documents, client)
-        results.append(field)
+        hits = by_name.get(spec.name)
+        if hits:
+            results.extend(hits)
+            continue
+        if used_sheet_kv and spec.group == "head":
+            results.append(
+                ExtractedField(
+                    name=spec.name,
+                    display_name=spec.display_name,
+                    status=FieldStatus.MISSING,
+                )
+            )
+            continue
+        results.append(_extract_one(spec, documents, client))
     return results
 
 

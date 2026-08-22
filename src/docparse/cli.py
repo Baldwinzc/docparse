@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from docparse.adapters.parsers.registry import parse_bytes
+from docparse.extraction.head_map import map_sheet_head
 from docparse.pipeline.runner import Pipeline
 
 
@@ -19,11 +20,16 @@ def main(argv: list[str] | None = None) -> int:
     layout_cmd = sub.add_parser("layout", help="只打印解析 IR 的键值和表，不做字段映射")
     layout_cmd.add_argument("path", type=Path)
 
+    head_cmd = sub.add_parser("head", help="按 sheet 打印表头映射，不合并多 sheet")
+    head_cmd.add_argument("path", type=Path)
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.path)
     if args.command == "layout":
         return _layout(args.path)
+    if args.command == "head":
+        return _head(args.path)
     return 1
 
 
@@ -56,6 +62,32 @@ def _layout(path: Path) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if not document.warnings or document.sheets else 2
+
+
+def _head(path: Path) -> int:
+    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    payload = {
+        "filename": document.filename,
+        "sheets": [
+            {
+                "name": sheet.name,
+                "role": sheet.role,
+                "consume": sheet.consume,
+                "fields": [
+                    {
+                        "name": field.name,
+                        "value": field.value,
+                        "status": field.status.value,
+                        "evidence": [item.model_dump() for item in field.evidence],
+                    }
+                    for field in map_sheet_head(sheet, document)
+                ],
+            }
+            for sheet in document.sheets
+        ],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":

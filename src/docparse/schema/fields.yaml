@@ -291,8 +291,10 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [境内发货人, 境内收发货人]
-    notes: 框表常与海关代码写在同一格，名称/代码拆分交 #17。
+    anchors: [境内发货人, 境内收发货人, 卖方SELLER, 卖方, SELLER, 卖 方]
+    head_map: trailing_code
+    split_target: tradeCode
+    notes: 框表常与海关代码写在同一格，末尾 10 位拆给 tradeCode。出口商业单据卖方只补充。
 
   - name: tradeCode
     display_name: 10位境内收发货人海关代码
@@ -300,7 +302,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [境内发货人, 境内收发货人]
-    notes: 常嵌在「境内发货人」同一格末尾。
+    head_map: skip
+    notes: 由 tradeName 的 trailing_code 拆出，不单独按锚点收。
 
   - name: tradeScc
     display_name: 18位境内收发货人信用代码
@@ -323,8 +326,8 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [境外收货人, 境外收发货人]
-    notes: 出口草单「境外收货人」。
+    anchors: [境外收货人, 境外收发货人, 买方BUYER, 买方, BUYER, 买 方, Bill To]
+    notes: 出口草单「境外收货人」。出口商业单据买方 / Bill To 只补充。
 
   - name: ownerName
     display_name: 生产销售单位名称
@@ -332,7 +335,9 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [生产销售单位, 消费使用单位]
-    notes: 文件里有就抽，没有就空。
+    head_map: trailing_code
+    split_target: ownerCode
+    notes: 文件里有就抽，没有就空。与代码同一格时末尾 10 位拆给 ownerCode。
 
   - name: ownerCode
     display_name: 生产销售单位代码
@@ -340,7 +345,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [生产销售单位, 消费使用单位]
-    notes: 文件里有就抽。常与名称同一格。
+    head_map: skip
+    notes: 由 ownerName 的 trailing_code 拆出，不单独按锚点收。
 
   - name: ownerScc
     display_name: 18位生产销售单位信用代码
@@ -348,7 +354,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [生产销售单位]
-    notes: 文件里有就抽。
+    head_map: skip
+    notes: 文件里有就抽。不要把名称格整段当成信用代码。
 
   - name: ownerCiqCode
     display_name: 生产销售单位检验检疫代码
@@ -356,7 +363,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [生产销售单位]
-    notes: 文件里有就抽。
+    head_map: skip
+    notes: 文件里有就抽。不要把名称格整段当成检验检疫代码。
 
   - name: customMaster
     display_name: 申报地海关代码
@@ -427,7 +435,7 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [运输工具名称及航次号, 运输工具名称]
-    notes: md 补。草单常与航次号同一格，拆分交 #17。
+    notes: md 补。与航次同一格时整格先挂本字段；拆航次见 #35。
 
   - name: cusVoyageNo
     display_name: 航次号
@@ -435,7 +443,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [运输工具名称及航次号, 航次号]
-    notes: md / json 漏标。与 trafName 同一格。
+    head_map: skip
+    notes: md / json 漏标。与 trafName 同一格。拆分见 #35。
 
   - name: billNo
     display_name: 提运单号
@@ -466,8 +475,8 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration, contract]
-    anchors: [合同协议号, 合同号, Contract No]
-    notes: 框表优先；合同 sheet 只补充。
+    anchors: [合同协议号, 合同号, Contract No, CONTRACT NO., 合同号CONTRACT NO.]
+    notes: 框表优先；合同 / 箱单只补充。多 sheet 不在本层合并。
 
   - name: supvModeCdde
     display_name: 监管方式/贸易方式
@@ -556,7 +565,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [运费]
-    notes: 与 feeRate / feeCurr 同一格，拆分交 #17。无则空。
+    head_map: skip
+    notes: 与 feeRate / feeCurr 同一格，拆分见 #34。无则空。
 
   - name: feeRate
     display_name: 运费值
@@ -565,7 +575,8 @@ head:
     value_type: number
     sources: [customs_declaration]
     anchors: [运费]
-    notes: 与运费标志同一格。
+    head_map: skip
+    notes: 与运费标志同一格。拆分见 #34。
 
   - name: feeCurr
     display_name: 运费货币类型
@@ -574,7 +585,8 @@ head:
     sources: [customs_declaration]
     anchors: [运费]
     code_table: 币制
-    notes: 与运费标志同一格。
+    head_map: skip
+    notes: 与运费标志同一格。拆分见 #34。
 
   - name: insurMark
     display_name: 保险费标志
@@ -582,7 +594,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [保费, 保险费]
-    notes: 与 insurRate / insurCurr 同一格。无则空。
+    head_map: skip
+    notes: 与 insurRate / insurCurr 同一格。拆分见 #34。无则空。
 
   - name: insurRate
     display_name: 保费值
@@ -591,7 +604,8 @@ head:
     value_type: number
     sources: [customs_declaration]
     anchors: [保费, 保险费]
-    notes: 与保费标志同一格。
+    head_map: skip
+    notes: 与保费标志同一格。拆分见 #34。
 
   - name: insurCurr
     display_name: 保费货币类型
@@ -600,7 +614,8 @@ head:
     sources: [customs_declaration]
     anchors: [保费, 保险费]
     code_table: 币制
-    notes: 与保费标志同一格。
+    head_map: skip
+    notes: 与保费标志同一格。拆分见 #34。
 
   - name: otherMark
     display_name: 杂费标志
@@ -608,7 +623,8 @@ head:
     layout: box_kv
     sources: [customs_declaration]
     anchors: [杂费]
-    notes: 与 otherRate / otherCurr 同一格。无则空。
+    head_map: skip
+    notes: 与 otherRate / otherCurr 同一格。拆分见 #34。无则空。
 
   - name: otherRate
     display_name: 杂费值
@@ -617,7 +633,8 @@ head:
     value_type: number
     sources: [customs_declaration]
     anchors: [杂费]
-    notes: 与杂费标志同一格。
+    head_map: skip
+    notes: 与杂费标志同一格。拆分见 #34。
 
   - name: otherCurr
     display_name: 杂费货币类型
@@ -626,7 +643,8 @@ head:
     sources: [customs_declaration]
     anchors: [杂费]
     code_table: 币制
-    notes: 与杂费标志同一格。
+    head_map: skip
+    notes: 与杂费标志同一格。拆分见 #34。
 
   - name: markNo
     display_name: 标记唛码
@@ -634,15 +652,15 @@ head:
     layout: box_kv
     sources: [customs_declaration, packing_list]
     anchors: [标记唛码及备注, 标记唛码]
-    notes: json 默认 N/M。草单常与备注同一格，拆分交 #17。抽不到不编造 N/M（那是接口侧默认，校验 #20 再定）。
+    notes: json 默认 N/M。与备注同一格时整格先挂本字段；拆分见 #36。抽不到不编造 N/M。
 
   - name: noteS
     display_name: 备注
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [备注, 标记唛码及备注]
-    notes: 与唛码可能同一格。
+    anchors: [备注]
+    notes: 独立「备注」键可收。与唛码同一格的拆分见 #36。
 
   - name: attachedDocs
     display_name: 随附单证及编号
