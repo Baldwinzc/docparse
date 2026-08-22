@@ -6,7 +6,8 @@
 # 客户原件不进仓库；source 只引用样本路径，方便对照。
 # G.W. / N.W. 不进 BOX / KV（样本里只当列名）。
 # TABLE 不加「单位」（防误伤「生产销售单位」）。
-# 值域排除（多候选按形状丢掉不像的）交 #29，本文件先不写 value:。
+# 值域（#29）挂在会撞车的 id 上：date | datetime | number | text | pattern。
+# 无 value: = 不过滤。公司名 / 地址 / 成交方式不要写。新形状改 YAML，新格子关系另开刀。
 
 version: 1
 
@@ -42,6 +43,8 @@ box:
         source: "#12 iePort anchors；本张无独立格"
 
   - id: ie_date
+    value:
+      type: datetime
     aliases:
       - text: 出口日期
         source: 恒信草单 一般贸易出口!G3
@@ -49,6 +52,8 @@ box:
         source: "layout.py 原常量 / #12 对照；本张出口草单无独立格"
 
   - id: decl_date
+    value:
+      type: datetime
     aliases:
       - text: 申报日期
         source: 恒信草单 一般贸易出口!J3
@@ -149,11 +154,15 @@ box:
         source: 恒信草单 一般贸易出口!A11
 
   - id: pack_no
+    value:
+      type: number
     aliases:
       - text: 件数
         source: 恒信草单 一般贸易出口!D11
 
   - id: gross_wt
+    value:
+      type: number
     aliases:
       - text: 毛重（千克）
         source: 恒信草单 一般贸易出口!E11
@@ -163,6 +172,8 @@ box:
         source: "#12 别名交 #13；中文简称。G.W. 不进 BOX"
 
   - id: net_wt
+    value:
+      type: number
     aliases:
       - text: 净重（千克）
         source: 恒信草单 一般贸易出口!F11
@@ -229,6 +240,9 @@ box:
 
 kv:
   - id: invoice_no
+    value:
+      type: pattern
+      pattern: '^[A-Za-z0-9][A-Za-z0-9./-]{2,}$'
     aliases:
       - text: "Invoice No."
         source: "恒信装箱单!I4（格末 U+FE55 小冒号，值在右格）"
@@ -245,6 +259,8 @@ kv:
         source: "恒信装箱单!A7「Bill To : BLU PRECISION LIMITED」"
 
   - id: date
+    value:
+      type: datetime
     aliases:
       - text: DATE
         source: "国光总箱单!A6「日期DATE:」；值在右格，可能是 Excel 日期时间"
