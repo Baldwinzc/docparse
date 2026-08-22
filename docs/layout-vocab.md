@@ -16,9 +16,9 @@
 | 双行表头 | 表头下一行像翻译（≥2 格像列名、不像数字/日期）→ 并入 `headers`（中英文空格拼接），英文行不当 body[0]。`header_row` 仍是第一行，`header_rows` 记下两行 |
 | 冒号 | 半角 `:`、全角 `：`、小冒号 `﹕`（U+FE55）、竖排 `︰`。整格已是日期时间则不切；切完左侧像日期时间也不切。值里后续冒号保留 |
 
-几何策略仍是互斥：`same_cell` > `below` > `right`。多候选按值域排除交 [#29](https://github.com/Baldwinzc/docparse/issues/29)。
+几何策略先收集 `same_cell` / `below` / `right`，再按词表 id 上的 `value:` 过滤；剩多个才用 `same_cell` > `below` > `right` 决胜。无 `value:` 的键与 #15 互斥结果一致。新 xlsx 往哪加见 [#31](https://github.com/Baldwinzc/docparse/issues/31)。
 
-`id` 只是分组，不接到 `fields.yaml`。值域约束以后挂在 id 上，不挂每条 alias。
+`id` 只是分组，不接到 `fields.yaml`。值域约束挂在 id 上，不挂每条 alias。
 
 ## BOX
 
@@ -56,6 +56,22 @@
 
 不加「单位」（防误伤「生产销售单位」）。国光「单位」列靠同行「物料名称 / 出货数量」凑满 2 命中。
 
+## 值域（#29）
+
+只给会撞车的 id 标形状。无 `value:` = 不过滤。公司名、地址、成交方式 / 监管方式不写（像不像合法业务值是 #14 / #17 / #20）。
+
+| type | 本文件挂在 | 值不像则丢 |
+|---|---|---|
+| `datetime` | `ie_date`、`decl_date`、`date` | 不是 `YYYY-MM-DD` / `YYYY-MM-DD HH:MM[:SS]`（Excel 带 `00:00:00` 也算） |
+| `number` | `pack_no`、`gross_wt`、`net_wt` | 不是纯数字 |
+| `pattern` | `invoice_no` | 对不上 YAML 里的正则 |
+| `date` / `text` | 本阶段不用 | `date` 不吃时间；`text` 等于没约束 |
+| 不写 | 其余 id | 与 #15 相同 |
+
+运行时：规范化 key 反查 box ∪ kv 的 id → 过滤 → 剩 1 个就收，剩 0 个该键缺失（不编造）。词表没收的新标签 = 无约束。
+
+单号类只挂了 `invoice_no`。`contr_no` / `contract_no` / `bill_no` 等撞车后再加 YAML，不必改 Python。
+
 ## 增别名
 
-改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。
+改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。以后新表对照 [#31](https://github.com/Baldwinzc/docparse/issues/31)。

@@ -362,3 +362,66 @@ def test_guoguang_invoice_number_and_date_in_kv() -> None:
     invoice_keys = [key for key in invoice_pairs if "INVOICE" in key.upper() or "发票" in key]
     assert invoice_keys, invoice_pairs
     assert any("26VN0502" in invoice_pairs[key] for key in invoice_keys)
+
+
+def _value_shape_workbook() -> bytes:
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "值域"
+
+    sheet["A1"] = "出口日期:备注栏"
+    sheet["A2"] = "2026-07-17 00:00:00"
+
+    sheet["B1"] = "件数"
+    sheet["C1"] = "惠州市恒德信精密科技有限公司"
+    sheet["B2"] = 40
+
+    sheet["D1"] = "货物存放地点:惠州仓库"
+
+    sheet["E1"] = "Invoice No.﹕不像单号"
+    sheet["F1"] = "隔壁不是单号"
+
+    for row in sheet.iter_rows(min_row=1, max_row=2, min_col=1, max_col=6):
+        for cell in row:
+            cell.border = _thin()
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def _unconstrained_key_items(sheet) -> list:
+    return [item for item in sheet.key_values if item.key == "货物存放地点"]
+
+
+def test_value_shape_prefers_datetime_below_over_same_cell_fragment() -> None:
+    document = parse_excel(_value_shape_workbook(), file_id="v1", filename="shape.xlsx")
+    sheet = document.sheets[0]
+    dates = [item for item in sheet.key_values if item.key == "出口日期"]
+    assert len(dates) == 1
+    assert dates[0].strategy == "below"
+    assert dates[0].value == "2026-07-17 00:00:00"
+
+
+def test_value_shape_prefers_numeric_pack_no_over_company_name() -> None:
+    document = parse_excel(_value_shape_workbook(), file_id="v1", filename="shape.xlsx")
+    sheet = document.sheets[0]
+    packs = [item for item in sheet.key_values if item.key == "件数"]
+    assert len(packs) == 1
+    assert packs[0].value == "40"
+    assert packs[0].strategy == "below"
+
+
+def test_unconstrained_key_keeps_same_cell_like_issue_15() -> None:
+    document = parse_excel(_value_shape_workbook(), file_id="v1", filename="shape.xlsx")
+    sheet = document.sheets[0]
+    items = _unconstrained_key_items(sheet)
+    assert len(items) == 1
+    assert items[0].strategy == "same_cell"
+    assert items[0].value == "惠州仓库"
+
+
+def test_unlike_values_drop_the_key() -> None:
+    document = parse_excel(_value_shape_workbook(), file_id="v1", filename="shape.xlsx")
+    sheet = document.sheets[0]
+    assert "Invoice No." not in _pairs(sheet)

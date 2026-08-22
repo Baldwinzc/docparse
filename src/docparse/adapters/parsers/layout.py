@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 
 from docparse.domain.ir import Cell, KeyValue, Sheet, Table
-from docparse.schema.loader import load_layout_vocab
+from docparse.schema.loader import VocabValue, load_layout_vocab
 
 # 半角 / 全角 / 小冒号（U+FE55）/ 竖排冒号。不按客户码点特判。
 _COLON_CHARS = ":：﹕︰"
@@ -18,6 +18,7 @@ _TRAIL_COLON = re.compile(rf"[{_COLON_CLASS}]+$")
 _DATETIME_FULL = re.compile(
     r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$"
 )
+_DATE_ONLY = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
 _DATETIME_LEFT = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2})?$")
 _TIME_FULL = re.compile(r"^\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?$")
 _NUMERIC = re.compile(r"^[\d.,]+$")
@@ -229,6 +230,9 @@ def _table_cells(tables: list[Table], cells: list[Cell]) -> set[str]:
     return {cell.address for cell in cells if cell.row in table_rows}
 
 
+_STRATEGY_RANK = {"same_cell": 0, "below": 1, "right": 2}
+
+
 def _detect_key_values(cells: list[Cell], occupied: set[str]) -> list[KeyValue]:
     by_pos = {(c.row, c.column): c for c in cells if c.row is not None and c.column is not None}
     found: list[KeyValue] = []
@@ -244,19 +248,55 @@ def _detect_key_values(cells: list[Cell], occupied: set[str]) -> list[KeyValue]:
     for cell in cells:
         if cell.address in occupied or not cell.value:
             continue
-        same = _same_cell_colon(cell)
-        if same:
-            add(same)
-            continue
-        below = _value_below(cell, by_pos, occupied)
-        if below:
-            add(below)
-            continue
-        right = _value_right(cell, by_pos, occupied)
-        if right:
-            add(right)
+        candidates = [
+            item
+            for item in (
+                _same_cell_colon(cell),
+                _value_below(cell, by_pos, occupied),
+                _value_right(cell, by_pos, occupied),
+            )
+            if item is not None
+        ]
+        chosen = _pick_key_value(candidates)
+        if chosen:
+            add(chosen)
 
     return found
+
+
+def _pick_key_value(candidates: list[KeyValue]) -> KeyValue | None:
+    if not candidates:
+        return None
+    kept = [item for item in candidates if _value_shape_ok(item)]
+    if not kept:
+        return None
+    if len(kept) == 1:
+        return kept[0]
+    return min(kept, key=lambda item: _STRATEGY_RANK.get(item.strategy, 99))
+
+
+def _value_shape_ok(item: KeyValue) -> bool:
+    spec = load_layout_vocab().value_for_key(item.key)
+    if spec is None:
+        return True
+    return _matches_value_spec(item.value, spec)
+
+
+def _matches_value_spec(text: str, spec: VocabValue) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if spec.type == "text":
+        return True
+    if spec.type == "number":
+        return _NUMERIC.fullmatch(stripped) is not None and any(ch.isdigit() for ch in stripped)
+    if spec.type == "date":
+        return _DATE_ONLY.fullmatch(stripped) is not None
+    if spec.type == "datetime":
+        return _DATETIME_FULL.fullmatch(stripped) is not None
+    if spec.type == "pattern":
+        return re.fullmatch(spec.pattern or "", stripped) is not None
+    return True
 
 
 def _split_colon(text: str) -> tuple[str, str] | None:
@@ -290,12 +330,31 @@ def _same_cell_colon(cell: Cell) -> KeyValue | None:
     )
 
 
+def _known_key_part(text: str) -> str | None:
+    """整格或冒号左侧是词表键时，返回该键。"""
+    stripped = text.strip()
+    cleaned = _label_text(stripped)
+    if _is_known_key(cleaned):
+        return cleaned
+    split = _split_colon(stripped)
+    if split and _is_known_key(split[0]):
+        return split[0]
+    return None
+
+
+def _key_text(text: str) -> str:
+    known = _known_key_part(text)
+    if known is not None:
+        return known
+    return _label_text(text)
+
+
 def _looks_like_label(text: str) -> bool:
     stripped = text.strip()
     cleaned = _label_text(stripped)
     if not cleaned or len(cleaned) > 40:
         return False
-    if _is_known_key(cleaned):
+    if _known_key_part(stripped) is not None:
         return True
     if _ends_with_colon(stripped) and not re.fullmatch(r"[\d.\-]+", cleaned):
         return True
@@ -317,7 +376,7 @@ def _value_below(
         return None
     if _same_cell_colon(other) is not None or _looks_like_label(other.value):
         return None
-    key = _label_text(cell.value)
+    key = _key_text(cell.value)
     return KeyValue(
         key=key,
         value=other.value,
@@ -335,7 +394,7 @@ def _value_right(
     if cell.row is None or cell.column is None:
         return None
     text = cell.value.strip()
-    key = _label_text(text)
+    key = _key_text(text)
     if not (_ends_with_colon(text) or _is_known_key(key)):
         return None
     right_col = _merge_right(cell) + 1

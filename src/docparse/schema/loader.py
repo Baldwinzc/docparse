@@ -1,8 +1,13 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+
+
+def _fold_label(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip()).casefold()
 
 
 class FieldSpec(BaseModel):
@@ -66,8 +71,27 @@ class VocabAlias(BaseModel):
     source: str = ""
 
 
+class VocabValue(BaseModel):
+    """挂在词表 id 上的值域形状。无此字段 = 不过滤。"""
+
+    type: str
+    pattern: str | None = None
+
+    @model_validator(mode="after")
+    def check_type(self) -> "VocabValue":
+        allowed = {"date", "datetime", "number", "text", "pattern"}
+        if self.type not in allowed:
+            raise ValueError(f"unknown value type: {self.type}")
+        if self.type == "pattern":
+            if not self.pattern:
+                raise ValueError("pattern type requires pattern")
+            re.compile(self.pattern)
+        return self
+
+
 class VocabGroup(BaseModel):
     id: str
+    value: VocabValue | None = None
     aliases: list[VocabAlias] = Field(default_factory=list)
 
 
@@ -90,6 +114,27 @@ class LayoutVocab(BaseModel):
                 if alias.text not in seen:
                     seen.append(alias.text)
         return tuple(seen)
+
+    def group_for_key(self, text: str) -> VocabGroup | None:
+        """规范化 key → box ∪ kv 的分组。0 或 >1 个 id 都算没对上。"""
+        needle = _fold_label(text)
+        if not needle:
+            return None
+        hits = [
+            group
+            for group in (*self.box, *self.kv)
+            if any(_fold_label(alias.text) == needle for alias in group.aliases)
+        ]
+        ids = {group.id for group in hits}
+        if len(ids) != 1:
+            return None
+        return hits[0]
+
+    def value_for_key(self, text: str) -> VocabValue | None:
+        group = self.group_for_key(text)
+        if group is None:
+            return None
+        return group.value
 
 
 class CodeEntry(BaseModel):

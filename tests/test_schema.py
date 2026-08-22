@@ -248,6 +248,15 @@ def test_layout_vocab_covers_issue_aliases() -> None:
     assert all(
         alias.source for group in [*vocab.box, *vocab.kv, *vocab.table] for alias in group.aliases
     )
+    ie_date = next(group for group in vocab.box if group.id == "ie_date")
+    assert ie_date.value is not None
+    assert ie_date.value.type == "datetime"
+    invoice = next(group for group in vocab.kv if group.id == "invoice_no")
+    assert invoice.value is not None
+    assert invoice.value.type == "pattern"
+    assert vocab.value_for_key("出口日期") is ie_date.value
+    assert vocab.value_for_key("货物存放地点") is None
+    assert vocab.group_for_key("Invoice No.") is invoice
 
 
 def test_customer_originals_not_in_repo() -> None:
