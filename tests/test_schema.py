@@ -172,6 +172,21 @@ def test_head_map_split_and_skip() -> None:
     assert schema.field("noteS").anchors == ["备注"]
 
 
+def test_goods_map_flags_and_master_signals() -> None:
+    schema = load_schema()
+    assert schema.field("codeTs").goods_map == "leading_hs"
+    assert schema.field("gmodel").goods_map == "raw_review"
+    assert "重量KG" not in schema.field("qty1").anchors
+    assert "重量KG" in schema.field("customNetWt").anchors
+    assert "项目编号" in schema.field("codeTs").anchors
+    assert "商品名称及商品规格" in schema.field("gname").anchors
+    assert "币值" in schema.field("tradeCurr").anchors
+    assert "最终目的地" in schema.field("destinationCountry").anchors
+    fields = {item.field for item in schema.goods_master.signals}
+    assert {"gno", "codeTs", "gname", "gqty", "declPrice", "cusOriginCountry"} <= fields
+    assert schema.goods_master.role_bonus["draft"] > schema.goods_master.role_bonus["packing"]
+
+
 def test_agent_fields_are_caller_params() -> None:
     schema = load_schema()
     by_name = {item.name: item for item in schema.caller_params}
