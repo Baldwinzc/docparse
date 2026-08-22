@@ -40,3 +40,20 @@ class GoodsItem(BaseModel):
             return None
         text = (field.value or "").strip()
         return text or None
+
+
+class Declaration(BaseModel):
+    """一张报关单。多 sheet 收成这一份，不按公司另开。"""
+
+    head: dict[str, ExtractedField] = Field(default_factory=dict)
+    goods: list[GoodsItem] = Field(default_factory=list)
+    review_reasons: list[str] = Field(default_factory=list)
+    has_draft: bool = False
+    source_roles: list[str] = Field(default_factory=list)
+
+    def value_of(self, name: str) -> str | None:
+        field = self.head.get(name)
+        if field is None:
+            return None
+        text = (field.value or "").strip()
+        return text or None

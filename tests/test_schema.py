@@ -187,6 +187,21 @@ def test_goods_map_flags_and_master_signals() -> None:
     assert schema.goods_master.role_bonus["draft"] > schema.goods_master.role_bonus["packing"]
 
 
+def test_assembly_policy_is_role_based() -> None:
+    schema = load_schema()
+    policy = schema.assembly
+    assert policy.primary_role == "draft"
+    assert policy.fill["draft"] == "overwrite"
+    assert policy.fill["packing"] == "fill"
+    assert "packNo" in policy.reconcile
+    assert "supvModeCdde" in policy.customs_only
+    assert policy.weight.copy_net_to_gross is False
+    assert policy.weight.net_as_weight is True
+    assert policy.defaults["cusIEFlag"] == "E"
+    assert "不把净重抄进本字段" in schema.field("grossWt").notes
+    assert "视同重量" in schema.field("netWt").notes
+
+
 def test_agent_fields_are_caller_params() -> None:
     schema = load_schema()
     by_name = {item.name: item for item in schema.caller_params}

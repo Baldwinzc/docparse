@@ -1,4 +1,6 @@
 from docparse.schema.loader import (
+    Assembly,
+    AssemblyWeight,
     CodeEntry,
     CodeTable,
     CodeTables,
@@ -21,6 +23,8 @@ from docparse.schema.loader import (
 )
 
 __all__ = [
+    "Assembly",
+    "AssemblyWeight",
     "CodeEntry",
     "CodeTable",
     "CodeTables",

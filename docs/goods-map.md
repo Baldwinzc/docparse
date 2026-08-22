@@ -88,7 +88,7 @@ Sheet.tables + consume
 | 主表判定要加信号（备案序号） | `goods_master.signals` | 否 |
 | 对行钥匙要加（合同货号） | `goods_master.match_keys` | 否 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
-| 谁覆盖谁（表头件数 vs 货表加总） | #19 | 否 |
+| 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
 | 申报要素要编 `0\|0\|...` | 以后另开；本层只留原文 | 视规则 |
 

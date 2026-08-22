@@ -68,11 +68,44 @@ class GoodsMaster(BaseModel):
     signals: list[GoodsMasterSignal] = Field(default_factory=list)
 
 
+_FILL_MODES = frozenset({"overwrite", "fill", "ignore"})
+
+
+class AssemblyWeight(BaseModel):
+    """表头重量。净重视同重量，不等于毛重。"""
+
+    net_as_weight: bool = True
+    copy_net_to_gross: bool = False
+
+
+class Assembly(BaseModel):
+    """整单组装策略。按角色，不按公司。"""
+
+    primary_role: str = "draft"
+    role_priority: list[str] = Field(
+        default_factory=lambda: ["draft", "packing", "invoice", "contract"]
+    )
+    fill: dict[str, str] = Field(default_factory=dict)
+    reconcile: list[str] = Field(default_factory=lambda: ["packNo", "grossWt", "netWt"])
+    customs_only: list[str] = Field(default_factory=list)
+    defaults: dict[str, str] = Field(default_factory=dict)
+    weight: AssemblyWeight = Field(default_factory=AssemblyWeight)
+    invoice_vocab: str = "invoice_no"
+
+    @model_validator(mode="after")
+    def check_fill(self) -> "Assembly":
+        for role, mode in self.fill.items():
+            if mode not in _FILL_MODES:
+                raise ValueError(f"unknown assembly fill: {role}={mode}")
+        return self
+
+
 class Schema(BaseModel):
     version: int = 2
     document_types: list[str] = Field(default_factory=list)
     goods_array: str = "tdecGoodsitemsVoArr"
     goods_master: GoodsMaster = Field(default_factory=GoodsMaster)
+    assembly: Assembly = Field(default_factory=Assembly)
     port_mapping: list[PortMapping] = Field(default_factory=list)
     caller_params: list[FieldSpec] = Field(default_factory=list)
     ignored: list[FieldSpec] = Field(default_factory=list)
