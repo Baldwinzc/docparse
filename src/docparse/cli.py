@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from docparse.adapters.parsers.registry import parse_bytes
+from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
 from docparse.extraction.head_map import map_sheet_head
 from docparse.pipeline.runner import Pipeline
 
@@ -23,6 +24,9 @@ def main(argv: list[str] | None = None) -> int:
     head_cmd = sub.add_parser("head", help="按 sheet 打印表头映射，不合并多 sheet")
     head_cmd.add_argument("path", type=Path)
 
+    goods_cmd = sub.add_parser("goods", help="按 sheet 打印商品映射，并打出合并后的一张货表")
+    goods_cmd.add_argument("path", type=Path)
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.path)
@@ -30,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
         return _layout(args.path)
     if args.command == "head":
         return _head(args.path)
+    if args.command == "goods":
+        return _goods(args.path)
     return 1
 
 
@@ -88,6 +94,46 @@ def _head(path: Path) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+def _goods(path: Path) -> int:
+    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    payload = {
+        "filename": document.filename,
+        "sheets": [
+            {
+                "name": sheet.name,
+                "role": sheet.role,
+                "consume": sheet.consume,
+                "score": items[0].master_score if items else 0,
+                "items": [_item_payload(item) for item in items],
+            }
+            for sheet in document.sheets
+            for items in [map_sheet_goods(sheet, document)]
+        ],
+        "merged": [_item_payload(item) for item in map_document_goods(document)],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _item_payload(item) -> dict:
+    return {
+        "source_role": item.source_role,
+        "source_sheet": item.source_sheet,
+        "source_kind": item.source_kind,
+        "master_score": item.master_score,
+        "review_reasons": item.review_reasons,
+        "fields": [
+            {
+                "name": field.name,
+                "value": field.value,
+                "status": field.status.value,
+                "evidence": [ev.model_dump() for ev in field.evidence],
+            }
+            for field in item.fields.values()
+        ],
+    }
 
 
 if __name__ == "__main__":

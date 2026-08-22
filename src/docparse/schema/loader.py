@@ -29,14 +29,20 @@ class FieldSpec(BaseModel):
     # trailing_code=末尾海关代码拆给 split_target。
     head_map: str = "keep"
     split_target: str | None = None
+    # 商品列映射（#18）。keep=原样；skip=本层不映射；
+    # leading_hs=取列值前缀税则号；raw_review=原文 + needs_review。
+    goods_map: str = "keep"
 
     @model_validator(mode="after")
-    def check_head_map(self) -> "FieldSpec":
-        allowed = {"keep", "skip", "trailing_code"}
-        if self.head_map not in allowed:
+    def check_maps(self) -> "FieldSpec":
+        allowed_head = {"keep", "skip", "trailing_code"}
+        if self.head_map not in allowed_head:
             raise ValueError(f"unknown head_map: {self.head_map}")
         if self.head_map == "trailing_code" and not self.split_target:
             raise ValueError(f"{self.name} trailing_code requires split_target")
+        allowed_goods = {"keep", "skip", "leading_hs", "raw_review"}
+        if self.goods_map not in allowed_goods:
+            raise ValueError(f"unknown goods_map: {self.goods_map}")
         return self
 
 
@@ -48,10 +54,25 @@ class PortMapping(BaseModel):
     notes: str = ""
 
 
+class GoodsMasterSignal(BaseModel):
+    field: str
+    weight: int = 1
+
+
+class GoodsMaster(BaseModel):
+    """主货表计分。新信号加 YAML，不写公司分支。"""
+
+    min_score: int = 1
+    match_keys: list[str] = Field(default_factory=lambda: ["gno", "codeTs", "gname", "gqty"])
+    role_bonus: dict[str, int] = Field(default_factory=dict)
+    signals: list[GoodsMasterSignal] = Field(default_factory=list)
+
+
 class Schema(BaseModel):
     version: int = 2
     document_types: list[str] = Field(default_factory=list)
     goods_array: str = "tdecGoodsitemsVoArr"
+    goods_master: GoodsMaster = Field(default_factory=GoodsMaster)
     port_mapping: list[PortMapping] = Field(default_factory=list)
     caller_params: list[FieldSpec] = Field(default_factory=list)
     ignored: list[FieldSpec] = Field(default_factory=list)

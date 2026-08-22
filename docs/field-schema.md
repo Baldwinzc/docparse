@@ -4,7 +4,7 @@
 
 形状对齐 Demo `字段说明.json`；草单上看得到、json 没有的从 `报关字段说明.md` 补。客户原件不进仓库。
 
-本目录只回答「输出什么、从哪类版面来」。名称转 code 见 [code-tables.md](code-tables.md)（#14），BOX/TABLE 别名见 [layout-vocab.md](layout-vocab.md)（#13），映射组装是 #17–#19。
+本目录只回答「输出什么、从哪类版面来」。名称转 code 见 [code-tables.md](code-tables.md)（#14），BOX/TABLE 别名见 [layout-vocab.md](layout-vocab.md)（#13），表头映射见 [head-map.md](head-map.md)（#17），商品映射见 [goods-map.md](goods-map.md)（#18），整单组装是 #19。
 
 本期**不区分必填 / 选填**，YAML 里 `required` 一律未标。后期再优化。
 
@@ -84,15 +84,15 @@ json 另有、用户这次没点名但仍收的：`cusIEFlag`、`entryType`、`c
 | 草单 / 用户说法 | 输出字段 | 版面 |
 |---|---|---|
 | 项号 | `gno` | table_col |
-| 商品编码 | `codeTs` | table_col |
-| 商品名称及规格型号 | `gname`（名称） | table_col |
-| 申报要素 | `gmodel`（恒信在这一列；规范编码本期留原文） | table_col |
+| 商品编码 / 项目编号 | `codeTs` | table_col |
+| 商品名称及规格型号 / 商品名称及商品规格 | `gname`（名称） | table_col |
+| 申报要素 / 商品规格 | `gmodel`（原文；规范编码本期不编） | table_col |
 | 品牌 | `brand` | table_col |
 | 数量 | `gqty` | table_col |
 | 单位 | `gunit` | table_col |
 | 单价 | `declPrice` | table_col |
 | 总价 | `declTotal` | table_col |
-| 币制 | `tradeCurr` | table_col |
+| 币制 / 币别 / 币值 | `tradeCurr` | table_col |
 | 原产国 | `cusOriginCountry` | table_col |
 | 最终目的地（地区） | `destinationCountry` | table_col |
 | 境内目的地 | `districtCode`（出口草单常写境内货源地，同一字段） | table_col |
@@ -140,7 +140,7 @@ json 另有、用户这次没点名但仍收的：`qty1` / `unit1` / `qty2` / `u
 - BOX / TABLE 同义词、列名别名（#13，已抽到 `schema/layout_vocab.yaml`）
 - 名称转 code（#14，已抽到 `schema/code_tables.yaml`）
 - 同一格稳拆（名称+海关代码）在 #17；运费 / 航次 / 唛码见 #34–#36
-- 跨表补充、拼整单（#18 / #19）
+- 跨表补充见 [goods-map.md](goods-map.md)（#18）；拼整单是 #19
 - 集装箱 / VIN 等块：空数组
 - `gmodel` 规范编码（`0|0|...`）先留原文
 - json 未列的 `*Name` 名称镜像字段不收

@@ -4,6 +4,42 @@
 
 version: 2
 goods_array: tdecGoodsitemsVoArr
+
+# 主货表计分（#18）。看已映射列，不看公司名。draft 加权，auxiliary / unknown 不参与。
+goods_master:
+  min_score: 1
+  match_keys: [gno, codeTs, gname, gqty]
+  role_bonus:
+    draft: 10
+    packing: 1
+    invoice: 1
+    contract: 0
+  signals:
+    - field: gno
+      weight: 5
+    - field: codeTs
+      weight: 5
+    - field: gmodel
+      weight: 4
+    - field: gname
+      weight: 3
+    - field: gqty
+      weight: 2
+    - field: gunit
+      weight: 2
+    - field: declPrice
+      weight: 2
+    - field: declTotal
+      weight: 2
+    - field: tradeCurr
+      weight: 2
+    - field: cusOriginCountry
+      weight: 2
+    - field: destinationCountry
+      weight: 2
+    - field: districtCode
+      weight: 2
+
 document_types:
   - customs_declaration
   - invoice
@@ -693,32 +729,34 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration]
-    anchors: [项号]
-    notes: 商品表列。有海关商品表以它为主。
+    anchors: [项号, Item]
+    notes: 商品表列。有海关商品表以它为主。不要编造项号。
 
   - name: codeTs
     display_name: 商品编号(T+S)
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [商品编号]
-    notes: HS 编码。
+    anchors: [商品编号, 项目编号, 商品编码, 海关编码, HS]
+    goods_map: leading_hs
+    notes: HS 编码。列值前缀 8–10 位数字时只取编号。
 
   - name: gname
     display_name: 商品名称
     group: goods
     layout: table_col
     sources: [customs_declaration, packing_list, invoice]
-    anchors: [商品名称, 商品名称及规格型号, 货物名称, 物料名称]
-    notes: 海关商品表优先。别名交 #13。
+    anchors: [商品名称及规格型号, 商品名称及商品规格, 商品名称, 货物名称, 物料名称, Description]
+    notes: 海关商品表优先。箱单 / 发票只补空。
 
   - name: gmodel
     display_name: 规格型号
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [申报要素, 规格型号]
-    notes: 恒信在「申报要素」列。规范编码 0|0|... 本期留原文，不在本 Issue 组装。
+    anchors: [申报要素, 规格型号, 商品规格]
+    goods_map: raw_review
+    notes: 原文进本字段。0|0|... 规范编码本层不编，标 needs_review。
 
   - name: brand
     display_name: 品牌
@@ -726,7 +764,7 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [品牌]
-    notes: 草单商品表有「品牌」列。json 曾标可忽略，按必须项收入。也可能写进 gmodel，重复时交 #18。
+    notes: 草单商品表有「品牌」列。与 gmodel 同时有则两字段都留，不互吞。
 
   - name: declPrice
     display_name: 申报单价
@@ -734,7 +772,7 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, invoice]
-    anchors: [单价]
+    anchors: [单价, Unit Price]
     notes: 海关商品表优先，发票补充。
 
   - name: declTotal
@@ -743,7 +781,7 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, invoice]
-    anchors: [总价]
+    anchors: [总价, 汇总价, 总值, Amount]
     notes: 海关商品表优先。可能是公式。
 
   - name: tradeCurr
@@ -751,7 +789,7 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration, invoice]
-    anchors: [币制]
+    anchors: [币制, 币别, 币值]
     code_table: 币制
     notes: 表上常是 HKD/USD 字母，转码交 #14。
 
@@ -761,7 +799,7 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
-    anchors: [数量, 成交数量, 出货数量, Qty]
+    anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty]
     notes: 海关商品表优先。别名交 #13。
 
   - name: gunit
@@ -769,18 +807,18 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [计价单位, 成交单位]
+    anchors: [计价单位, 成交单位, 申报单位, 单位]
     code_table: 计量单位
-    notes: 名称转码交 #14。
+    notes: 名称转码交 #14。映射层可认「单位」列；layout 词表仍不加，防框表误伤。
 
   - name: qty1
     display_name: 法定第一数量
     group: goods
     layout: table_col
     value_type: number
-    sources: [customs_declaration, packing_list]
-    anchors: [重量, 重量KG, 法定数量, 净重]
-    notes: 恒信「重量KG」进本字段还是 customNetWt，交 #18。本期目录两字段都收。
+    sources: [customs_declaration]
+    anchors: [法定第一数量, 法定数量]
+    notes: 只认法定数量列。重量 / 重量KG / 净重不进本字段，见 customNetWt。
 
   - name: unit1
     display_name: 法定第一计量单位
@@ -814,7 +852,7 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [原产国]
+    anchors: [原产国, 原產國, 原产地, Country of Origin]
     code_table: 国别
     notes: 名称转码交 #14。
 
@@ -823,7 +861,7 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [最终目的国]
+    anchors: [最终目的国, 最终目的地]
     code_table: 国别
     notes: 名称转码交 #14。
 
@@ -851,8 +889,8 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [毛重]
-    notes: json 原字段名 Wet。箱单可补充。无则空。
+    anchors: [总毛重, 毛重, "G.W.", "G.W", GW]
+    notes: json 原字段名 Wet。箱单可补充。无毛重列时由净重抄一份，见 #18。
 
   - name: customNetWt
     display_name: 自定义净重
@@ -860,8 +898,8 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [净重, 重量KG]
-    notes: 与 qty1 的分工交 #18。
+    anchors: [总净重, 净重, 重量KG, 重量, "N.W.", NW]
+    notes: 未区分的「重量 / 重量KG」当净重。不进 qty1。无毛重列再抄到 customGrossWet。
 
   - name: exgVersion
     display_name: 加工成品单耗版本号

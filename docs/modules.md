@@ -31,7 +31,7 @@ docparse/
 | 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 需可选依赖；图片未接 OCR | PDF / 扫描件 OCR |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
-| 字段抽取 | `extraction/head_map.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；旧锚点仍给无 sheet 的文本 | 商品映射交 #18 |
+| 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；旧锚点仍给无 sheet 的文本 | 整单组装交 #19 |
 | 标准化与校验 | `extraction/validate.py` | 格式 / 必填 / 证据 | 金额、日期、跨字段 |
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
@@ -63,6 +63,8 @@ Excel 框表拆分（#9 / #15 / #29）：`adapters/parsers/layout.py` 从格子�
 sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`。每张 sheet 标 `draft` / `packing` / `invoice` / `contract` / `auxiliary` / `unknown`，并带 `consume`（primary / supplement / exclude）。辅助表和 unknown 的 KV / table 留在 IR，不进下一张报关单。新叫法加 YAML，不按公司写分支。见 [sheet-roles.md](sheet-roles.md)。
 
 表头映射（#17）：`extraction/head_map.py` 吃已拆 `key_values`，按 `fields.yaml` 的 `anchors` / `head_map` 写成 TdecHead 候选。一次一张 sheet，多 sheet 并排放，不覆盖。`agent*` 不从文件填。中文值不转 code。名称+10 位海关代码用 `trailing_code`。运费 / 航次 / 唛码拆分见 #34–#36，发票号槽位见 #37。本地对眼：`python -m docparse.cli head file.xlsx`。见 [head-map.md](head-map.md)。
+
+商品映射（#18）：`extraction/goods_map.py` 吃已拆 `tables`，按 `fields.yaml` 的 `goods.anchors` / `goods_map` / `goods_master` 写成货行。先选主货表，其它可消费 sheet 只补空；对不上的行标来源收成补充项。`auxiliary` / `unknown` 不读。重量未区分当净重，无毛重列再抄一份到毛重。申报要素原文进 `gmodel`，不编 `0|0|...`。箱数不加字段。本地对眼：`python -m docparse.cli goods file.xlsx`。见 [goods-map.md](goods-map.md)。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 
