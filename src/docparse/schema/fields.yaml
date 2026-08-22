@@ -40,6 +40,33 @@ goods_master:
     - field: districtCode
       weight: 2
 
+# 整单组装（#19）。按角色，不按公司。有 draft 抄草单；无 draft 拼商业单据。
+# 新角色加 role_priority / fill；新核对字段加 reconcile；海关专用项加 customs_only。
+assembly:
+  primary_role: draft
+  role_priority: [draft, packing, invoice, contract]
+  fill:
+    draft: overwrite
+    packing: fill
+    invoice: fill
+    contract: fill
+  reconcile: [packNo, grossWt, netWt]
+  customs_only:
+    - customMaster
+    - iePort
+    - ciqEntyPortCode
+    - supvModeCdde
+    - cutMode
+    - wrapType
+    - licenseNo
+    - manualNo
+  defaults:
+    cusIEFlag: E
+  weight:
+    net_as_weight: true
+    copy_net_to_gross: false
+  invoice_vocab: invoice_no
+
 document_types:
   - customs_declaration
   - invoice
@@ -575,7 +602,7 @@ head:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [毛重（千克）, 毛重(千克), 毛重]
-    notes: 框表优先。别名 G.W. 交 #13。
+    notes: "框表优先。别名 G.W. 交 #13。只有净重时不把净重抄进本字段，见 assembly.weight。"
 
   - name: netWt
     display_name: 净重(公斤)
@@ -584,7 +611,7 @@ head:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [净重（千克）, 净重(千克), 净重]
-    notes: 框表优先。别名 N.W. 交 #13。
+    notes: "框表优先。别名 N.W. 交 #13。只有净重、没有毛重时视同重量，只进本字段。"
 
   - name: transMode
     display_name: 成交方式

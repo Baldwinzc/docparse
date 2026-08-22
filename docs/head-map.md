@@ -69,7 +69,7 @@ Sheet.key_values + consume
 | 名称+代码粘在一起 | 已有 `trailing_code` | 否 |
 | 新的稳拆规则（例如 18 位信用代码） | 新 `head_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
 | 运费 / 航次 / 唛码要拆 | #34–#36 | 派工后再动 |
-| 跨表谁覆盖谁（表头） | #19 | 否 |
+| 跨表谁覆盖谁（表头） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 商品行跨表补空 | #18 / [goods-map.md](goods-map.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
 | 发票号要进报关单 | #37 先定落点 | 视目录 |
