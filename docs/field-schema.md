@@ -47,14 +47,14 @@
 |---|---|---|
 | 预录入编号 | `preEntryId` | box_kv |
 | 海关编号 | `entryId` | box_kv |
-| 境内发/收货人 | `tradeName` + `tradeCode`（同一格常粘在一起，拆分交 #17） | box_kv |
+| 境内发/收货人 | `tradeName` + `tradeCode`（同一格末尾 10 位海关代码，#17 `trailing_code`） | box_kv |
 | 出/进境关别 | `iePort` | box_kv |
 | 进口日期 / 出口日期 | `ieDate` | box_kv |
 | 申报日期 | `declDate`（json/md 未列此键，键名待确认） | box_kv |
 | 备案号 | `manualNo` | box_kv |
 | 境外收/发货人 | `consignorEname` | box_kv |
 | 运输方式 | `cusTrafMode` | box_kv |
-| 运输工具名称及航次号 | `trafName` + `cusVoyageNo`（同一格，拆分交 #17） | box_kv |
+| 运输工具名称及航次号 | `trafName`（整格）；航次拆分见 #35 | box_kv |
 | 提运单号 | `billNo` | box_kv |
 | 货物存放地点 | `goodsPlace` | box_kv |
 | 生产销售单位 / 消费使用单位 | `ownerName` + `ownerCode` | box_kv |
@@ -71,11 +71,11 @@
 | 毛重（千克） | `grossWt` | box_kv |
 | 净重（千克） | `netWt` | box_kv |
 | 成交方式 | `transMode` | box_kv |
-| 运费 | `feeMark` / `feeRate` / `feeCurr`（同一格，拆分交 #17） | box_kv |
-| 保费 | `insurMark` / `insurRate` / `insurCurr` | box_kv |
-| 杂费 | `otherMark` / `otherRate` / `otherCurr` | box_kv |
+| 运费 | `fee*` 本层 skip，拆分见 #34 | box_kv |
+| 保费 | `insur*` 本层 skip，拆分见 #34 | box_kv |
+| 杂费 | `other*` 本层 skip，拆分见 #34 | box_kv |
 | 随附单证及编号 | `attachedDocs`（原文）+ `tdecDocusVoArr`（数组，拆条交后续） | box_kv |
-| 标记唛码及备注 | `markNo` + `noteS`（同一格，拆分交 #17） | box_kv |
+| 标记唛码及备注 | `markNo`（整格）；与备注拆分见 #36。独立「备注」进 `noteS` | box_kv |
 
 json 另有、用户这次没点名但仍收的：`cusIEFlag`、`entryType`、`cutMode`、`customMaster`、`tradeScc`、`tradeCiqCode`、`ownerScc`、`ownerCiqCode`、`promiseItems`。
 
@@ -139,7 +139,8 @@ json 另有、用户这次没点名但仍收的：`qty1` / `unit1` / `qty2` / `u
 - 必填 / 选填
 - BOX / TABLE 同义词、列名别名（#13，已抽到 `schema/layout_vocab.yaml`）
 - 名称转 code（#14，已抽到 `schema/code_tables.yaml`）
-- 同一格拆成多个字段、跨表补充（#17 / #18）
+- 同一格稳拆（名称+海关代码）在 #17；运费 / 航次 / 唛码见 #34–#36
+- 跨表补充、拼整单（#18 / #19）
 - 集装箱 / VIN 等块：空数组
 - `gmodel` 规范编码（`0|0|...`）先留原文
 - json 未列的 `*Name` 名称镜像字段不收

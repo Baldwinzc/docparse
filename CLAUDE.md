@@ -55,6 +55,7 @@ git worktree add -b feat/12-pdf-parser ../docparse-12-pdf-parser origin/main
 - 描述必须包含 `Closes #编号`。
 - 提交作者用 `1018067278@qq.com`，不加 Co-Authored-By Claude。
 - 提交说明、PR / Issue 正文和评论里**严禁**出现 `Generated with Claude Code`、机器人标记、Claude / Anthropic 署名或任何 AI 生成声明。
+- 功能 PR 必须有一节 **「以后新 xlsx / 新叫法改哪」**：用表格写清新文案、新语义、新格子关系、跨表合并分别改哪个文件、动不动 Python。不要只把扩展路径留在对话里。
 - push / 建 PR 前先确认。
 - 本仓库是个人仓：**CI 绿且确认后合并**。不要直接推 main。
 

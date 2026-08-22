@@ -52,7 +52,8 @@
 
 ## 本阶段不做
 
-- BOX → TdecHead（#17）
 - 跨表补货（#18）
 - 拼一张报关单（#19）
 - unknown 自动降级补空
+
+BOX → TdecHead 见 [head-map.md](head-map.md)（#17）。

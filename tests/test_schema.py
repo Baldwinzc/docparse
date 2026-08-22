@@ -162,6 +162,16 @@ def test_no_required_distinction_this_issue() -> None:
         assert spec.required is False, spec.name
 
 
+def test_head_map_split_and_skip() -> None:
+    schema = load_schema()
+    assert schema.field("tradeName").head_map == "trailing_code"
+    assert schema.field("tradeCode").head_map == "skip"
+    assert schema.field("ownerName").head_map == "trailing_code"
+    assert schema.field("feeRate").head_map == "skip"
+    assert schema.field("cusVoyageNo").head_map == "skip"
+    assert schema.field("noteS").anchors == ["备注"]
+
+
 def test_agent_fields_are_caller_params() -> None:
     schema = load_schema()
     by_name = {item.name: item for item in schema.caller_params}
