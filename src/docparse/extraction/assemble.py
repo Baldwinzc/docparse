@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from docparse.domain.fields import Declaration, ExtractedField, FieldStatus, GoodsItem
 from docparse.domain.ir import DocumentIR, Evidence, Sheet
+from docparse.domain.models import FieldReview, ReviewEvidence
 from docparse.extraction.goods_map import map_document_goods
 from docparse.extraction.head_map import map_sheet_head
 from docparse.schema.loader import (
@@ -40,6 +41,7 @@ def assemble_declaration(
     sheets = _ordered_sheets(document, policy)
     head = _merge_head(sheets, document, schema)
     _apply_defaults(head, schema)
+    _apply_caller_overrides(head, schema, agent)
     _apply_weight_policy(head, schema)
     _reconcile_head(head, sheets, document, schema)
     _note_invoice_numbers(head, sheets, vocab, document, schema)
@@ -76,6 +78,55 @@ def declaration_payload(declaration: Declaration, schema: Schema | None = None) 
         },
     }
     return payload
+
+
+_REVIEW_STATUSES = {FieldStatus.NEEDS_REVIEW, FieldStatus.INVALID, FieldStatus.CONFLICT}
+
+
+def declaration_reviews(
+    declaration: Declaration, schema: Schema | None = None
+) -> list[FieldReview]:
+    """字段级复核清单。path 跟目录走；新字段进 YAML 后自动出现。"""
+    schema = schema or load_schema()
+    reviews: list[FieldReview] = []
+    seen: set[str] = set()
+    for name, field in declaration.head.items():
+        item = _field_review(name, field)
+        if item is None:
+            continue
+        reviews.append(item)
+        seen.add(name)
+    for index, goods in enumerate(declaration.goods):
+        prefix = f"{schema.goods_array}[{index}]"
+        for name, field in goods.fields.items():
+            path = f"{prefix}.{name}"
+            item = _field_review(path, field)
+            if item is None:
+                continue
+            reviews.append(item)
+            seen.add(path)
+        if goods.review_reasons and prefix not in seen:
+            reviews.append(
+                FieldReview(
+                    path=prefix,
+                    status=FieldStatus.NEEDS_REVIEW.value,
+                    reasons=list(goods.review_reasons),
+                )
+            )
+            seen.add(prefix)
+    for reason in declaration.review_reasons:
+        name, sep, detail = reason.partition(":")
+        if not sep or name in seen or name.startswith("goods["):
+            continue
+        reviews.append(
+            FieldReview(
+                path=name,
+                status=FieldStatus.NEEDS_REVIEW.value,
+                reasons=[detail],
+            )
+        )
+        seen.add(name)
+    return reviews
 
 
 def _ordered_sheets(document: DocumentIR, policy: Assembly) -> list[Sheet]:
@@ -276,6 +327,57 @@ def _apply_lookup(field: ExtractedField, spec: FieldSpec, codes: CodeTables) -> 
         return
     field.value = code
     field.normalized_value = code
+
+
+def _apply_caller_overrides(
+    head: dict[str, ExtractedField],
+    schema: Schema,
+    caller: dict[str, str] | None,
+) -> None:
+    """覆盖组装默认值（如 cusIEFlag）。只吃 assembly.defaults 里的键，未知键忽略。"""
+    values = caller or {}
+    for name in schema.assembly.defaults:
+        text = (values.get(name) or "").strip()
+        if not text:
+            continue
+        spec = schema.field(name)
+        head[name] = ExtractedField(
+            name=name,
+            display_name=spec.display_name if spec else name,
+            value=text,
+            normalized_value=text,
+            confidence=1.0,
+            status=FieldStatus.ACCEPTED,
+            extraction_method="caller",
+        )
+
+
+def _field_review(path: str, field: ExtractedField) -> FieldReview | None:
+    blocking = field.status in _REVIEW_STATUSES
+    missing = field.status == FieldStatus.MISSING and bool(field.validation_errors)
+    if not blocking and not missing:
+        return None
+    reasons = list(field.validation_errors) or [field.status.value]
+    return FieldReview(
+        path=path,
+        status=field.status.value,
+        reasons=reasons,
+        evidence=[_review_evidence(item) for item in field.evidence],
+    )
+
+
+def _review_evidence(item: Evidence) -> ReviewEvidence:
+    sheet = None
+    cell = item.cell
+    if cell and "!" in cell:
+        sheet, cell = cell.split("!", 1)
+    return ReviewEvidence(
+        sheet=sheet,
+        cell=cell,
+        page=item.page,
+        quote=item.quote,
+        filename=item.filename,
+    )
 
 
 def _apply_agent(

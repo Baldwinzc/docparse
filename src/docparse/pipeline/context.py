@@ -4,6 +4,7 @@ from docparse.adapters.files.base import FileStore
 from docparse.adapters.jobs.base import JobStore
 from docparse.adapters.llm.openai_compat import OpenAICompatClient
 from docparse.config import Settings
+from docparse.domain.fields import Declaration
 from docparse.domain.ir import DocumentIR
 from docparse.domain.models import FileRef, Job, PackageResult
 from docparse.schema.loader import Schema
@@ -18,6 +19,8 @@ class PipelineContext:
     llm: OpenAICompatClient
     schema: Schema
     raw: FileRef
+    caller: dict[str, str] = field(default_factory=dict)
     members: list[FileRef] = field(default_factory=list)
     documents: list[DocumentIR] = field(default_factory=list)
     package: PackageResult = field(default_factory=PackageResult)
+    declaration: Declaration | None = None

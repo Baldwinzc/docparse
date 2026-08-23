@@ -5,7 +5,13 @@ from docparse.pipeline.context import PipelineContext
 
 
 def reconcile_step(ctx: PipelineContext) -> None:
-    """同一压缩包内，同名字段出现多个不同值则标冲突。"""
+    """同一压缩包内，同名字段出现多个不同值则标冲突。
+
+    已组装的一张单里货行会重复 gname / gqty，不能按字段名对账。
+    zip 多文件拼单以后改 assemble，不在这里按扁列表对。
+    """
+    if ctx.declaration is not None:
+        return
     grouped: dict[str, set[str]] = defaultdict(set)
     for field in ctx.package.fields:
         if field.normalized_value:

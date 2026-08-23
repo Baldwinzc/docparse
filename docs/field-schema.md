@@ -35,7 +35,7 @@
 
 ## 调用方传入（不解析）
 
-`agentCode` / `agentName` / `agentScc` / `agentCiqCode`：申报单位，调用时传入。
+`agentCode` / `agentName` / `agentScc` / `agentCiqCode`：申报单位，调用时传入。HTTP 没传则用 `fields.yaml` 里的 `default`（本期泰洲）。文件里不抽。换申报单位只改 YAML。
 
 生产销售单位 / 消费使用单位（`owner*`）文件里有就抽，没有就空。
 

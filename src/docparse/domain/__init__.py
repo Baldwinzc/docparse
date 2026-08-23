@@ -10,12 +10,14 @@ from docparse.domain.ir import (
 )
 from docparse.domain.models import (
     DocumentType,
+    FieldReview,
     FileKind,
     FileRef,
     Job,
     JobStatus,
     PackageResult,
     ParseJobResult,
+    ReviewEvidence,
 )
 
 __all__ = [
@@ -25,6 +27,7 @@ __all__ = [
     "DocumentType",
     "Evidence",
     "ExtractedField",
+    "FieldReview",
     "FieldStatus",
     "FileKind",
     "FileRef",
@@ -33,6 +36,7 @@ __all__ = [
     "PackageResult",
     "Page",
     "ParseJobResult",
+    "ReviewEvidence",
     "Sheet",
     "TextBlock",
 ]
