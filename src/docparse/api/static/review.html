@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>报关单对眼</title>
+<style>
+  :root {
+    --paper: #e7eeea;
+    --ink: #182226;
+    --muted: #4d5c58;
+    --line: #b6c4be;
+    --card: #f4f8f5;
+    --teal: #0b5f66;
+    --hold: #8a5a12;
+    --hold-soft: #f3e4c8;
+    --pass: #1f6b4a;
+    --pass-soft: #d5eadc;
+    --empty: #8a9692;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.55 "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+  .wrap { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 64px; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  form, .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input[type="text"], input[type="file"] { min-width: 180px; }
+  button {
+    background: var(--teal);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: wait; }
+  .status { font-weight: 600; }
+  .status.needs_review { color: var(--hold); }
+  .status.succeeded { color: var(--pass); }
+  .status.failed { color: #b42318; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { width: 28%; color: var(--muted); font-weight: 500; }
+  tr.review { background: var(--hold-soft); }
+  .empty { color: var(--empty); }
+  .ev { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .err { color: #b42318; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>报关单对眼</h1>
+  <p class="sub">只看 declaration + reviews，不摊 IR。字段名单来自 YAML。</p>
+  <form id="form">
+    <div class="row" id="fields"></div>
+    <div class="row" style="margin-top:12px">
+      <button type="submit" id="go">上传并组装</button>
+      <span id="hint" class="sub"></span>
+    </div>
+  </form>
+  <div id="out"></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let catalog = { head: [], caller: [], goods: [], goods_array: "tdecGoodsitemsVoArr" };
+
+function fieldInput(spec, file) {
+  const label = document.createElement("label");
+  label.textContent = spec.display_name || spec.name;
+  const input = document.createElement("input");
+  input.name = spec.name;
+  if (file) {
+    input.type = "file";
+    input.accept = ".xlsx,.xls,.xlsm";
+    input.required = true;
+  } else {
+    input.type = "text";
+    input.value = spec.default || "";
+  }
+  label.appendChild(input);
+  return label;
+}
+
+function reviewMap(reviews) {
+  const map = {};
+  for (const item of reviews || []) map[item.path] = item;
+  return map;
+}
+
+function evidenceHtml(item) {
+  if (!item || !item.evidence || !item.evidence.length) return "";
+  return item.evidence.map((ev) => {
+    const where = [ev.sheet, ev.cell].filter(Boolean).join("!");
+    const bits = [where, ev.quote].filter(Boolean).join(" · ");
+    return `<div class="ev">${escapeHtml(bits)}</div>`;
+  }).join("");
+}
+
+function escapeHtml(text) {
+  return String(text ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[ch]));
+}
+
+function cell(value, review) {
+  const empty = value === "" || value == null;
+  const shown = empty ? "（空）" : String(value);
+  const cls = empty ? "empty" : "";
+  const why = review ? `<div class="ev">${escapeHtml((review.reasons || []).join("；"))}</div>${evidenceHtml(review)}` : "";
+  return `<td class="${cls}">${escapeHtml(shown)}${why}</td>`;
+}
+
+function renderHead(declaration, reviews) {
+  const rows = [...catalog.head, ...catalog.caller].map((spec) => {
+    const review = reviews[spec.name];
+    const mark = review ? " class=\"review\"" : "";
+    return `<tr${mark}><th>${escapeHtml(spec.display_name)} <span class="empty">${escapeHtml(spec.name)}</span></th>${cell(declaration[spec.name], review)}</tr>`;
+  }).join("");
+  return `<div class="panel"><h2>表头</h2><table>${rows}</table></div>`;
+}
+
+function renderGoods(declaration, reviews) {
+  const key = catalog.goods_array;
+  const items = declaration[key] || [];
+  if (!items.length) return `<div class="panel"><h2>商品</h2><p class="empty">无货行</p></div>`;
+  const head = catalog.goods.map((spec) => `<th>${escapeHtml(spec.display_name)}</th>`).join("");
+  const body = items.map((item, index) => {
+    const tds = catalog.goods.map((spec) => {
+      const path = `${key}[${index}].${spec.name}`;
+      return cell(item[spec.name], reviews[path]);
+    }).join("");
+    return `<tr>${tds}</tr>`;
+  }).join("");
+  return `<div class="panel"><h2>商品 ${items.length} 行</h2><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function render(job) {
+  const result = job.result || {};
+  const declaration = result.declaration || {};
+  const reviews = reviewMap(result.reviews);
+  const status = job.status || "";
+  $("out").innerHTML = `
+    <div class="panel">
+      <div>状态 <span class="status ${escapeHtml(status)}">${escapeHtml(status)}</span>
+      · 文件 ${escapeHtml(job.source_filename || "")}
+      · job ${escapeHtml(job.id || "")}</div>
+    </div>
+    ${renderHead(declaration, reviews)}
+    ${renderGoods(declaration, reviews)}
+  `;
+}
+
+async function boot() {
+  const spec = await fetch("/v1/schema").then((r) => r.json());
+  catalog = spec;
+  const box = $("fields");
+  box.appendChild(fieldInput({ name: "file", display_name: "xlsx" }, true));
+  for (const item of spec.caller) box.appendChild(fieldInput(item, false));
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const btn = $("go");
+  btn.disabled = true;
+  $("hint").textContent = "组装中…";
+  $("out").innerHTML = "";
+  try {
+    const body = new FormData(event.target);
+    const resp = await fetch("/v1/jobs", { method: "POST", body });
+    const job = await resp.json();
+    if (!resp.ok) throw new Error(job.detail || resp.statusText);
+    render(job);
+    $("hint").textContent = "";
+  } catch (err) {
+    $("out").innerHTML = `<p class="err">${escapeHtml(err.message || err)}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+boot().catch((err) => { $("hint").textContent = err.message; });
+</script>
+</body>
+</html>

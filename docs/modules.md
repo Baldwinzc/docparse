@@ -36,6 +36,7 @@ docparse/
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
 | FastAPI 交单 | `api/routes.py` + `pipeline/runner.py` | `POST /v1/jobs` 交 `declaration` + `reviews`（#21） | PDF / zip 拼单不改路由 |
+| 对眼页 | `api/static/review.html` + `GET /v1/schema` | 只画报关单 + reviews（#44） | 不渲染 IR |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
 | 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 | 换供应商只改这里 |
 
@@ -70,6 +71,8 @@ sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`�
 整单组装（#19）：`extraction/assemble.py` 按 `fields.yaml` 的 `assembly` 收成一张报关单。有 `draft` 抄草单，商业单据只补空并核件毛净；无草单只抄能确定的商业事实，`customs_only` 空着复核。名称转 code；转不出留原文。`agent*` 只来自调用参数。表头只有净重时视同重量，不抄进毛重。本地对眼：`python -m docparse.cli declare file.xlsx`。见 [assemble.md](assemble.md)。
 
 FastAPI 交单（#21）：`POST /v1/jobs` 与 `cli declare` 走同一条 pipeline。调用方参数跟 `caller_params` 走，不写死四个 agent。响应是 Job + `result.declaration` + `result.reviews`。见 [api.md](api.md)。
+
+对眼页（#44）：`GET /review` 静态页 + `GET /v1/schema`。只画报关单和复核证据，不渲染 IR。见 [review.md](review.md)。
 
 抽取后校验（#20）：规则先写在 [validate-rules.md](validate-rules.md) 给业务确认。位数 / 正则 / 容差确认后再进数据文件，引擎只执行，不编造、不改值。
 

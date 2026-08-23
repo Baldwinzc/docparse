@@ -128,3 +128,31 @@ def test_openapi_shows_caller_and_goods_array() -> None:
     assert "tdecGoodsitemsVoArr" in text
     assert "/v1/jobs" in spec["paths"]
     assert "/health" in spec["paths"]
+
+
+def test_schema_catalog_follows_yaml() -> None:
+    body = _client().get("/v1/schema").json()
+    names = {item["name"] for item in body["head"]}
+    assert "contrNo" in names
+    assert "grossWt" in names
+    assert body["goods_array"] == "tdecGoodsitemsVoArr"
+    caller = {item["name"]: item for item in body["caller"]}
+    assert caller["agentCode"]["default"] == "4403180867"
+    assert caller["agentName"]["display_name"]
+    goods = {item["name"] for item in body["goods"]}
+    assert "gname" in goods
+    assert "package" not in body
+
+
+def test_review_page_has_no_ir_and_no_hardcoded_field_list() -> None:
+    page = _client().get("/review")
+    root = _client().get("/")
+    assert page.status_code == 200
+    assert root.status_code == 200
+    html = page.text
+    assert "报关单对眼" in html
+    assert "/v1/schema" in html
+    assert "/v1/jobs" in html
+    assert "package.documents" not in html
+    assert "contrNo" not in html
+    assert "境内发货人" not in html
