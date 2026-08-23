@@ -202,7 +202,28 @@ def test_hengxin_draft_maps_core_goods_columns() -> None:
     assert all(field.evidence for field in items[0].fields.values())
 
 
-def test_packing_fills_gross_when_qty_aligns() -> None:
+def test_ten_digit_customs_code_header_maps_hs() -> None:
+    def ten_digit(sheet) -> None:
+        sheet["A1"] = "PACKING LIST"
+        sheet["A3"] = "物料名称"
+        sheet["B3"] = "海关十位编码"
+        sheet["C3"] = "出货数量"
+        sheet["A4"] = "贴纸"
+        sheet["B4"] = "4821900000纸或纸板的其他各种标签"
+        sheet["C4"] = 100
+        for row in sheet.iter_rows(min_row=1, max_row=4, min_col=1, max_col=3):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"总箱单": ten_digit}),
+        file_id="hs10",
+        filename="hs10.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("codeTs") == "4821900000"
+    assert items[0].value_of("gname") == "贴纸"
+
     document = parse_excel(
         _workbook({"一般贸易出口": _draft, "装箱单": _packing}),
         file_id="mix",

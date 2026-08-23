@@ -179,6 +179,7 @@ def test_goods_map_flags_and_master_signals() -> None:
     assert "重量KG" not in schema.field("qty1").anchors
     assert "重量KG" in schema.field("customNetWt").anchors
     assert "项目编号" in schema.field("codeTs").anchors
+    assert "海关十位编码" in schema.field("codeTs").anchors
     assert "商品名称及商品规格" in schema.field("gname").anchors
     assert "币值" in schema.field("tradeCurr").anchors
     assert "最终目的地" in schema.field("destinationCountry").anchors
@@ -278,6 +279,7 @@ def test_layout_vocab_covers_issue_aliases() -> None:
     assert "G.W." in table
     assert "G.W" in table
     assert "申报要素" in table
+    assert "海关十位编码" in table
     assert "货物名称" in table
     assert "单位" not in table
     kv = vocab.kv_labels()
