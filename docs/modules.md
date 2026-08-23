@@ -66,7 +66,7 @@ sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`�
 
 表头映射（#17）：`extraction/head_map.py` 吃已拆 `key_values`，按 `fields.yaml` 的 `anchors` / `head_map` 写成 TdecHead 候选。一次一张 sheet，多 sheet 并排放，不覆盖。`agent*` 不从文件填。中文值不转 code。名称+10 位海关代码用 `trailing_code`。运费 / 航次 / 唛码拆分见 #34–#36，发票号槽位见 #37。本地对眼：`python -m docparse.cli head file.xlsx`。见 [head-map.md](head-map.md)。
 
-商品映射（#18 / #48）：`extraction/goods_map.py` 吃已拆 `tables`，按 `fields.yaml` 的 `goods.anchors` / `goods_map` / `goods_master` 写成货行。先选主货表；`merge_supplement` 默认 false，不跨表补货。打开关后其它可消费 sheet 只补空。`auxiliary` / `unknown` 不读。重量未区分当净重，无毛重列再抄一份到毛重。申报要素原文进 `gmodel`，不编 `0|0|...`。箱数不加字段。本地对眼：`python -m docparse.cli goods file.xlsx`。见 [goods-map.md](goods-map.md)。
+商品映射（#18 / #48）：`extraction/goods_map.py` 吃已拆 `tables`，按 `fields.yaml` 的 `goods.anchors` / `goods_map` / `goods_master` 写成货行。先选主货表；`merge_supplement` 默认 false，不跨表补货。打开关后其它可消费 sheet 只补空。`auxiliary` / `unknown` 不读。重量未区分当净重；没有毛重列则毛重空着。申报要素原文进 `gmodel`，不编 `0|0|...`。箱数不加字段。本地对眼：`python -m docparse.cli goods file.xlsx`。见 [goods-map.md](goods-map.md)。
 
 整单组装（#19）：`extraction/assemble.py` 按 `fields.yaml` 的 `assembly` 收成一张报关单。有 `draft` 抄草单，商业单据只补空并核件毛净；无草单只抄能确定的商业事实，`customs_only` 空着复核。名称转 code；转不出留原文。`agent*` 只来自调用参数。表头只有净重时视同重量，不抄进毛重。本地对眼：`python -m docparse.cli declare file.xlsx`。见 [assemble.md](assemble.md)。
 

@@ -922,7 +922,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [总毛重, 毛重, "G.W.", "G.W", GW]
-    notes: json 原字段名 Wet。箱单可补充。无毛重列时由净重抄一份，见 #18。
+    notes: json 原字段名 Wet。没有毛重列就空着，不把净重抄过来。
 
   - name: customNetWt
     display_name: 自定义净重
@@ -931,7 +931,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [总净重, 净重, 重量KG, 重量, "N.W.", NW]
-    notes: 未区分的「重量 / 重量KG」当净重。不进 qty1。无毛重列再抄到 customGrossWet。
+    notes: 未区分的「重量 / 重量KG」当净重。不进 qty1。不抄进毛重。
 
   - name: exgVersion
     display_name: 加工成品单耗版本号

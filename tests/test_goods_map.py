@@ -215,7 +215,7 @@ def test_packing_does_not_fill_when_merge_off() -> None:
     assert items[0].source_role == "draft"
     assert values["gqty"] == "150"
     assert values["customNetWt"] == "5.74"
-    assert items[0].value_of("customGrossWet") in {None, "5.74"}
+    assert items[0].value_of("customGrossWet") is None
     assert all(
         not (field.evidence and field.evidence[0].cell.startswith("装箱单!"))
         for field in items[0].fields.values()
@@ -237,7 +237,7 @@ def test_packing_fills_missing_gross_when_merge_on() -> None:
     assert items[0].fields["customGrossWet"].evidence[0].cell.startswith("装箱单!")
 
 
-def test_weight_without_gross_copies_net() -> None:
+def test_weight_without_gross_leaves_gross_empty() -> None:
     document = parse_excel(
         _workbook({"一般贸易出口": _draft}),
         file_id="hx",
@@ -246,8 +246,8 @@ def test_weight_without_gross_copies_net() -> None:
     items = map_document_goods(document)
     values = _values(items[0])
     assert values["customNetWt"] == "5.74"
-    assert values["customGrossWet"] == "5.74"
-    assert "net_as_gross" in items[0].review_reasons
+    assert items[0].value_of("customGrossWet") is None
+    assert "net_as_gross" not in items[0].review_reasons
 
 
 def test_auxiliary_is_not_master_or_supplement() -> None:

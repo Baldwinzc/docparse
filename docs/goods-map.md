@@ -61,7 +61,7 @@ Sheet.tables + consume
 |---|---|
 | 明确净重 / N.W. / 总净重 | `customNetWt` |
 | 明确毛重 / G.W. / 总毛重 | `customGrossWet` |
-| 未区分的重量 | `customNetWt`；合并后仍无毛重列 → 再抄一份到 `customGrossWet` |
+| 未区分的重量 | `customNetWt`；没有毛重列则 `customGrossWet` 空着 |
 | 法定第一数量 | 才进 `qty1` |
 
 表头整单件毛净交 #19。箱数不加商品字段。
