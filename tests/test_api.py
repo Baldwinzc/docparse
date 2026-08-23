@@ -7,7 +7,6 @@ import pytest
 pytest.importorskip("openpyxl")
 
 from fastapi.testclient import TestClient
-from tests.test_assemble import _draft, _net_only_packing, _workbook
 
 from docparse.adapters.files.memory import MemoryFileStore
 from docparse.adapters.jobs.memory import MemoryJobStore
@@ -15,6 +14,7 @@ from docparse.api.app import create_app
 from docparse.api.routes import get_pipeline
 from docparse.config import Settings
 from docparse.pipeline.runner import Pipeline
+from xlsx_fixtures import _draft, _net_only_packing, _workbook
 
 
 def _client() -> TestClient:
