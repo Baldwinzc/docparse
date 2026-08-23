@@ -153,6 +153,7 @@ def test_review_page_has_no_ir_and_no_hardcoded_field_list() -> None:
     assert "报关单对眼" in html
     assert "/v1/schema" in html
     assert "/v1/jobs" in html
+    assert "_meta.codes" in html
     assert "package.documents" not in html
     assert "contrNo" not in html
     assert "境内发货人" not in html

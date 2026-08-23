@@ -47,9 +47,12 @@ def test_draft_is_copied_and_codes_are_looked_up() -> None:
     assert payload["packNo"] == "40"
     assert payload["grossWt"] == "296.46"
     assert payload["netWt"] == "218.375"
-    assert payload["cusTrafMode"] == "4"
-    assert payload["transMode"] == "3"
-    assert payload["supvModeCdde"] == "0110"
+    assert payload["cusTrafMode"] == "公路运输"
+    assert payload["transMode"] == "FOB"
+    assert payload["supvModeCdde"] == "一般贸易"
+    assert payload["_meta"]["codes"]["cusTrafMode"] == "4"
+    assert payload["_meta"]["codes"]["transMode"] == "3"
+    assert payload["_meta"]["codes"]["supvModeCdde"] == "0110"
     assert payload["cusIEFlag"] == "E"
     assert payload["agentCode"] == "4403180867"
     assert payload["agentName"] == "深圳市泰洲物流有限公司"
@@ -62,10 +65,14 @@ def test_draft_is_copied_and_codes_are_looked_up() -> None:
     goods = payload["tdecGoodsitemsVoArr"][0]
     assert goods["gno"] == "1"
     assert goods["gname"] == "表壳配件/壳体"
-    assert goods["gunit"] == "008"
-    assert goods["cusOriginCountry"] == "CHN"
-    assert goods["destinationCountry"] == "HKG"
-    assert goods["districtCode"] == "44139"
+    assert goods["gunit"] == "只"
+    assert goods["cusOriginCountry"] == "中国"
+    assert goods["destinationCountry"] == "中国香港"
+    assert goods["districtCode"] == "惠州其他"
+    assert payload["_meta"]["codes"]["tdecGoodsitemsVoArr[0].gunit"] == "008"
+    assert payload["_meta"]["codes"]["tdecGoodsitemsVoArr[0].cusOriginCountry"] == "CHN"
+    assert payload["_meta"]["codes"]["tdecGoodsitemsVoArr[0].destinationCountry"] == "HKG"
+    assert payload["_meta"]["codes"]["tdecGoodsitemsVoArr[0].districtCode"] == "44139"
     assert payload["tdecContasVoArr"] == []
     assert payload["_meta"]["source_roles"] == ["draft", "packing"]
     assert "SHOULD-NOT-ASSEMBLE" not in payload.values()
@@ -147,9 +154,9 @@ def test_hengxin_sample_one_declaration() -> None:
     assert payload["contrNo"] == "HDX2026-251"
     assert payload["packNo"] == "40"
     assert payload["grossWt"] == "296.46"
-    assert payload["transMode"] == "3"
-    assert payload["cusTrafMode"] == "4"
-    assert payload["supvModeCdde"] == "0110"
+    assert payload["transMode"] == "FOB"
+    assert payload["cusTrafMode"] == "公路运输"
+    assert payload["supvModeCdde"] == "一般贸易"
     assert len(payload["tdecGoodsitemsVoArr"]) >= 1
     assert payload["tdecGoodsitemsVoArr"][0]["gname"]
 

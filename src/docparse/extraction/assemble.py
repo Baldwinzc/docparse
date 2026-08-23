@@ -76,6 +76,7 @@ def declaration_payload(declaration: Declaration, schema: Schema | None = None) 
         "head_status": {
             name: field.status.value for name, field in declaration.head.items() if field.value
         },
+        "codes": _code_index(declaration, schema),
     }
     return payload
 
@@ -325,7 +326,7 @@ def _apply_lookup(field: ExtractedField, spec: FieldSpec, codes: CodeTables) -> 
         field.status = FieldStatus.NEEDS_REVIEW
         field.validation_errors = [*field.validation_errors, f"unknown_code:{table}"]
         return
-    field.value = code
+    # 展示留名称；code 只进 normalized_value，不覆盖格子原文。
     field.normalized_value = code
 
 
@@ -425,6 +426,29 @@ def _collect_reasons(
                 detail = ";".join(field.validation_errors) or field.status.value
                 reasons.append(f"goods[{index}].{name}:{detail}")
     return reasons
+
+
+def _code_index(declaration: Declaration, schema: Schema) -> dict[str, str]:
+    """path → code。只收转成功的；展示值仍是名称。"""
+    codes: dict[str, str] = {}
+    for name, field in declaration.head.items():
+        spec = schema.field(name)
+        if spec is None or not spec.code_table:
+            continue
+        code = (field.normalized_value or "").strip()
+        text = (field.value or "").strip()
+        if code and code != text:
+            codes[name] = code
+    for index, item in enumerate(declaration.goods):
+        for name, field in item.fields.items():
+            spec = schema.field(name)
+            if spec is None or not spec.code_table:
+                continue
+            code = (field.normalized_value or "").strip()
+            text = (field.value or "").strip()
+            if code and code != text:
+                codes[f"{schema.goods_array}[{index}].{name}"] = code
+    return codes
 
 
 def _goods_payload(item: GoodsItem, schema: Schema) -> dict:
