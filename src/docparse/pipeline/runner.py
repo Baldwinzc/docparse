@@ -10,6 +10,7 @@ from docparse.adapters.llm.openai_compat import OpenAICompatClient
 from docparse.config import Settings, get_settings
 from docparse.domain.fields import FieldStatus
 from docparse.domain.models import Job, JobStatus, ParseJobResult
+from docparse.extraction.assemble import declaration_payload, declaration_reviews
 from docparse.pipeline.context import PipelineContext
 from docparse.pipeline.steps.classify import classify_step
 from docparse.pipeline.steps.extract_content import extract_content_step
@@ -51,10 +52,23 @@ class Pipeline:
         self.llm = llm or OpenAICompatClient(self.settings)
         self.steps = steps or DEFAULT_STEPS
 
-    def submit(self, filename: str, data: bytes) -> Job:
+    def submit(
+        self,
+        filename: str,
+        data: bytes,
+        *,
+        caller: dict[str, str] | None = None,
+        request_id: str | None = None,
+    ) -> Job:
         if len(data) > self.settings.max_upload_mb * 1024 * 1024:
             raise ValueError(f"文件超过 {self.settings.max_upload_mb} MB")
-        job = self.jobs.create(Job(source_filename=filename))
+        job = self.jobs.create(
+            Job(
+                source_filename=filename,
+                request_id=request_id,
+                caller=dict(caller or {}),
+            )
+        )
         raw = self.files.put(
             data,
             job_id=job.id,
@@ -62,8 +76,7 @@ class Pipeline:
             content_type="application/octet-stream",
             kind="raw",
         )
-        job = self.jobs.update(job.id, source_file_id=raw.id, status=JobStatus.QUEUED)
-        return job
+        return self.jobs.update(job.id, source_file_id=raw.id, status=JobStatus.QUEUED)
 
     def run_job(self, job_id: str) -> Job:
         job = self.jobs.get(job_id)
@@ -79,24 +92,47 @@ class Pipeline:
             llm=self.llm,
             schema=load_schema(),
             raw=raw,
+            caller=dict(job.caller),
         )
         try:
             for _name, step in self.steps:
                 step(ctx)
             status = _status_from_package(ctx)
-            result = ParseJobResult(status=status, package=ctx.package)
+            result = ParseJobResult(
+                status=status,
+                package=ctx.package,
+                declaration=_declaration_json(ctx),
+                reviews=declaration_reviews(ctx.declaration, ctx.schema)
+                if ctx.declaration is not None
+                else [],
+            )
             return self.jobs.update(job_id, status=status, result=result)
         except Exception as exc:
             result = ParseJobResult(status=JobStatus.FAILED, error=str(exc))
             return self.jobs.update(job_id, status=JobStatus.FAILED, result=result, error=str(exc))
 
-    def process(self, filename: str, data: bytes) -> Job:
-        job = self.submit(filename, data)
+    def process(
+        self,
+        filename: str,
+        data: bytes,
+        *,
+        caller: dict[str, str] | None = None,
+        request_id: str | None = None,
+    ) -> Job:
+        job = self.submit(filename, data, caller=caller, request_id=request_id)
         return self.run_job(job.id)
+
+
+def _declaration_json(ctx: PipelineContext) -> dict | None:
+    if ctx.declaration is None:
+        return None
+    return declaration_payload(ctx.declaration, ctx.schema)
 
 
 def _status_from_package(ctx: PipelineContext) -> JobStatus:
     if ctx.package.review_reasons:
+        return JobStatus.NEEDS_REVIEW
+    if ctx.declaration is not None and ctx.declaration.review_reasons:
         return JobStatus.NEEDS_REVIEW
     blocking = {FieldStatus.INVALID, FieldStatus.CONFLICT, FieldStatus.NEEDS_REVIEW}
     if any(field.status in blocking for field in ctx.package.fields):

@@ -43,4 +43,4 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/docparse/api/app.py" = ["B008"]
+"src/docparse/api/routes.py" = ["B008"]

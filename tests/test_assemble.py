@@ -11,7 +11,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Border, Side
 
 from docparse.adapters.parsers.excel import parse_excel
-from docparse.extraction.assemble import assemble_declaration, declaration_payload
+from docparse.extraction.assemble import (
+    assemble_declaration,
+    declaration_payload,
+    declaration_reviews,
+)
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
 REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
@@ -244,6 +248,16 @@ def test_draft_is_copied_and_codes_are_looked_up() -> None:
     assert payload["tdecContasVoArr"] == []
     assert payload["_meta"]["source_roles"] == ["draft", "packing"]
     assert "SHOULD-NOT-ASSEMBLE" not in payload.values()
+    reviews = {item.path: item for item in declaration_reviews(declaration)}
+    assert reviews["iePort"].status == "needs_review"
+    assert any("unknown_code" in reason for reason in reviews["iePort"].reasons)
+    assert reviews["iePort"].evidence
+
+
+def test_caller_overrides_default_ie_flag() -> None:
+    document = _parse({"一般贸易出口": _draft}, "draft-only.xlsx")
+    payload = declaration_payload(assemble_declaration(document, agent={"cusIEFlag": "I"}))
+    assert payload["cusIEFlag"] == "I"
 
 
 def test_commercial_mismatch_keeps_draft_value() -> None:

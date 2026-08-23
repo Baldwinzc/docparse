@@ -17,7 +17,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
   → 有 draft：表头以草单为准；商业单据只补空，并核件毛净
   → 无 draft：商业单据能确定的抄；customs_only 空着复核，不编
   → 名称能转 code 就转；转不出留原文 + needs_review
-  → agent* 只来自 CLI 参数
+  → agent* 只来自调用参数（CLI / FastAPI 同一条 pipeline）
   → 一张 Declaration / 一份 dec_results 形状 JSON
 ```
 

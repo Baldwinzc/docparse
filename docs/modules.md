@@ -6,7 +6,7 @@
 docparse/
 ├── docs/                      设计、流程、模块说明
 ├── src/docparse/
-│   ├── api/                   HTTP 入口
+│   ├── api/                   HTTP 入口（收文件 + caller → pipeline）
 │   ├── cli.py                 本地命令行
 │   ├── config.py              环境变量
 │   ├── domain/                任务 / IR / 字段（稳定契约）
@@ -35,6 +35,7 @@ docparse/
 | 标准化与校验 | `extraction/validate.py` | 骨架：格式 / 证据；业务闸未接 | 规则清单见 [validate-rules.md](validate-rules.md)，确认后由 #20 执行 |
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
+| FastAPI 交单 | `api/routes.py` + `pipeline/runner.py` | `POST /v1/jobs` 交 `declaration` + `reviews`（#21） | PDF / zip 拼单不改路由 |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
 | 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 | 换供应商只改这里 |
 
@@ -67,6 +68,8 @@ sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`�
 商品映射（#18）：`extraction/goods_map.py` 吃已拆 `tables`，按 `fields.yaml` 的 `goods.anchors` / `goods_map` / `goods_master` 写成货行。先选主货表，其它可消费 sheet 只补空；对不上的行标来源收成补充项。`auxiliary` / `unknown` 不读。重量未区分当净重，无毛重列再抄一份到毛重。申报要素原文进 `gmodel`，不编 `0|0|...`。箱数不加字段。本地对眼：`python -m docparse.cli goods file.xlsx`。见 [goods-map.md](goods-map.md)。
 
 整单组装（#19）：`extraction/assemble.py` 按 `fields.yaml` 的 `assembly` 收成一张报关单。有 `draft` 抄草单，商业单据只补空并核件毛净；无草单只抄能确定的商业事实，`customs_only` 空着复核。名称转 code；转不出留原文。`agent*` 只来自调用参数。表头只有净重时视同重量，不抄进毛重。本地对眼：`python -m docparse.cli declare file.xlsx`。见 [assemble.md](assemble.md)。
+
+FastAPI 交单（#21）：`POST /v1/jobs` 与 `cli declare` 走同一条 pipeline。调用方参数跟 `caller_params` 走，不写死四个 agent。响应是 Job + `result.declaration` + `result.reviews`。见 [api.md](api.md)。
 
 抽取后校验（#20）：规则先写在 [validate-rules.md](validate-rules.md) 给业务确认。位数 / 正则 / 容差确认后再进数据文件，引擎只执行，不编造、不改值。
 

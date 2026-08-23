@@ -6,7 +6,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from docparse.adapters.parsers.registry import parse_bytes
-from docparse.extraction.assemble import assemble_declaration, declaration_payload
 from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
 from docparse.extraction.head_map import map_sheet_head
 from docparse.pipeline.runner import Pipeline
@@ -136,10 +135,11 @@ def _goods(path: Path) -> int:
 
 
 def _declare(path: Path, agent: dict[str, str]) -> int:
-    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
-    declaration = assemble_declaration(document, agent=agent)
-    print(json.dumps(declaration_payload(declaration), ensure_ascii=False, indent=2))
-    return 0
+    caller = {key: value for key, value in agent.items() if value.strip()}
+    job = Pipeline().process(path.name, path.read_bytes(), caller=caller)
+    payload = job.result.declaration if job.result else None
+    print(json.dumps(payload or {}, ensure_ascii=False, indent=2))
+    return 0 if job.status.value != "failed" else 2
 
 
 def _item_payload(item) -> dict:
