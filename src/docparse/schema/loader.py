@@ -67,6 +67,7 @@ class GoodsMaster(BaseModel):
     match_keys: list[str] = Field(default_factory=lambda: ["gno", "codeTs", "gname", "gqty"])
     role_bonus: dict[str, int] = Field(default_factory=dict)
     signals: list[GoodsMasterSignal] = Field(default_factory=list)
+    merge_supplement: bool = False
 
 
 _FILL_MODES = frozenset({"overwrite", "fill", "ignore"})

@@ -38,10 +38,11 @@ def map_document_goods(
     if master_items[0].master_score < schema.goods_master.min_score:
         return []
     merged = [deepcopy(item) for item in master_items]
-    for sheet, items, _ in mapped:
-        if sheet is master_sheet:
-            continue
-        _merge_sheet(merged, items, schema)
+    if schema.goods_master.merge_supplement:
+        for sheet, items, _ in mapped:
+            if sheet is master_sheet:
+                continue
+            _merge_sheet(merged, items, schema)
     for item in merged:
         _copy_net_as_gross(item, schema)
     return merged
