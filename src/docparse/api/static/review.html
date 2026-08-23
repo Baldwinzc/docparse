@@ -116,24 +116,25 @@ function escapeHtml(text) {
   }[ch]));
 }
 
-function cell(value, review) {
+function cell(value, review, code) {
   const empty = value === "" || value == null;
   const shown = empty ? "（空）" : String(value);
   const cls = empty ? "empty" : "";
+  const note = code ? `<div class="ev">code ${escapeHtml(code)}</div>` : "";
   const why = review ? `<div class="ev">${escapeHtml((review.reasons || []).join("；"))}</div>${evidenceHtml(review)}` : "";
-  return `<td class="${cls}">${escapeHtml(shown)}${why}</td>`;
+  return `<td class="${cls}">${escapeHtml(shown)}${note}${why}</td>`;
 }
 
-function renderHead(declaration, reviews) {
+function renderHead(declaration, reviews, codes) {
   const rows = [...catalog.head, ...catalog.caller].map((spec) => {
     const review = reviews[spec.name];
     const mark = review ? " class=\"review\"" : "";
-    return `<tr${mark}><th>${escapeHtml(spec.display_name)} <span class="empty">${escapeHtml(spec.name)}</span></th>${cell(declaration[spec.name], review)}</tr>`;
+    return `<tr${mark}><th>${escapeHtml(spec.display_name)} <span class="empty">${escapeHtml(spec.name)}</span></th>${cell(declaration[spec.name], review, codes[spec.name])}</tr>`;
   }).join("");
   return `<div class="panel"><h2>表头</h2><table>${rows}</table></div>`;
 }
 
-function renderGoods(declaration, reviews) {
+function renderGoods(declaration, reviews, codes) {
   const key = catalog.goods_array;
   const items = declaration[key] || [];
   if (!items.length) return `<div class="panel"><h2>商品</h2><p class="empty">无货行</p></div>`;
@@ -141,7 +142,7 @@ function renderGoods(declaration, reviews) {
   const body = items.map((item, index) => {
     const tds = catalog.goods.map((spec) => {
       const path = `${key}[${index}].${spec.name}`;
-      return cell(item[spec.name], reviews[path]);
+      return cell(item[spec.name], reviews[path], codes[path]);
     }).join("");
     return `<tr>${tds}</tr>`;
   }).join("");
@@ -152,6 +153,7 @@ function render(job) {
   const result = job.result || {};
   const declaration = result.declaration || {};
   const reviews = reviewMap(result.reviews);
+  const codes = (declaration._meta && declaration._meta.codes) || {};
   const status = job.status || "";
   $("out").innerHTML = `
     <div class="panel">
@@ -159,8 +161,8 @@ function render(job) {
       · 文件 ${escapeHtml(job.source_filename || "")}
       · job ${escapeHtml(job.id || "")}</div>
     </div>
-    ${renderHead(declaration, reviews)}
-    ${renderGoods(declaration, reviews)}
+    ${renderHead(declaration, reviews, codes)}
+    ${renderGoods(declaration, reviews, codes)}
   `;
 }
 

@@ -16,7 +16,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
   → 只处理 consume ≠ exclude
   → 有 draft：表头以草单为准；商业单据只补空，并核件毛净
   → 无 draft：商业单据能确定的抄；customs_only 空着复核，不编
-  → 名称能转 code 就转；转不出留原文 + needs_review
+  → 名称能转 code：value 留名称，code 进 normalized_value / _meta.codes；转不出留原文 + needs_review
   → agent* 只来自调用参数（CLI / FastAPI 同一条 pipeline）
   → 一张 Declaration / 一份 dec_results 形状 JSON
 ```
@@ -59,7 +59,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 | 新单据类型要参与拼单 | `sheet_roles.yaml` 加 role；`assembly.fill` / `role_priority` | 否 |
 | 新辅助表 | `auxiliary` + `consume: exclude` | 否 |
 | 新表头字段 | `fields.yaml` 新字段 + anchors | 否（组装器按目录收） |
-| 新字段要转 code | 字段上写 `code_table`；码表加行 | 否 |
+| 新字段要转 code | 字段上写 `code_table`；码表加行。展示仍是名称 | 否 |
 | 无草单时不要编的海关项 | `assembly.customs_only` | 否 |
 | 要对一下的件毛净 / 单号 | `assembly.reconcile` | 否 |
 | 发票号要进报关单 | #37 先定落点 | 视目录 |
