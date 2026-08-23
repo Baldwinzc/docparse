@@ -16,8 +16,8 @@ Sheet.tables + consume
   → 列名对 fields.yaml goods.anchors（去空白、大小写不敏感；英文按词边界）
   → 每张 sheet 先出带角色的货行
   → 按 goods_master 计分选一张主表
-  → merge_supplement 默认 false：其它 sheet 不补货行
-  → 打开关后才补空；对不上的行标来源收成补充项
+  → merge_supplement 默认 true：同序对齐，数量对上才补空
+  → 对不上不加补充行；主表已有值不覆盖
 ```
 
 `auxiliary` / `unknown` 的 table 留在 IR，本层不读。
@@ -68,14 +68,18 @@ Sheet.tables + consume
 
 ## 跨表补空
 
-`goods_master.merge_supplement` 默认 **false**。有草单时箱单 / 发票项次对不齐，不把箱单数量填进草单空列。
+默认打开。不按品名对（恒信项次对不齐）。默认各表行序一致：第 i 行对第 i 行。
 
-打开关后：对行钥匙按 `goods_master.match_keys` 顺序，默认 `gno` → `codeTs` → `gname` → `gqty`。命中唯一一行就停；同名多行再用数量拆开。合计行（没有项号 / 税号 / 品名）丢掉。
+补空条件：
 
-- 主表已有列：**不覆盖**
-- 主表空的列：补上，证据带来源 sheet
-- 对不上、且有税号或非数字品名：补充项，`source_kind=supplement`，`needs_review` 理由 `unmatched_supplement`
-- 合同把项号写进品名列这种脏行：不收
+1. 行序对齐
+2. 数量对得上。主表要有 `gqty`；副表用 `gqty`，或 `declTotal / declPrice`。两边差在 `qty_abs_tol` / `qty_rel_tol` 内才补
+3. 主表已有值不覆盖
+4. 对不上：不补这一行，不加 supplement 行
+
+恒信第 2 项草单数量空、箱单 500：主表没有数量可对，不补。国光箱单 100、发票 100×单价=总价：对上，补单价总价。
+
+容差在 `goods_master.qty_rel_tol` / `qty_abs_tol`。
 
 ## 以后新 xlsx / 新叫法改哪
 
@@ -89,8 +93,8 @@ Sheet.tables + consume
 | 新单据类型要参与补货 | `sheet_roles.yaml` 加 role，`consume: supplement` | 否 |
 | 新辅助表（料号对照） | `auxiliary` 加信号 | 否 |
 | 主表判定要加信号（备案序号） | `goods_master.signals` | 否 |
-| 要再开跨表补货 | `goods_master.merge_supplement: true`，并先改对行钥匙 | 否 |
-| 对行钥匙要加（合同货号） | `goods_master.match_keys` | 否 |
+| 关掉跨表补货 | `goods_master.merge_supplement: false` | 否 |
+| 数量容差 | `qty_rel_tol` / `qty_abs_tol` | 否 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
 | 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
