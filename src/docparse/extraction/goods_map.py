@@ -13,8 +13,6 @@ _SPACE = re.compile(r"\s+")
 _LEADING_HS = re.compile(r"^(\d{8,10})")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
-_NET_FIELD = "customNetWt"
-_GROSS_FIELD = "customGrossWet"
 
 
 def map_document_goods(
@@ -43,8 +41,6 @@ def map_document_goods(
             if sheet is master_sheet:
                 continue
             _merge_sheet(merged, items, schema)
-    for item in merged:
-        _copy_net_as_gross(item, schema)
     return merged
 
 
@@ -250,18 +246,6 @@ def _worth_supplement(item: GoodsItem) -> bool:
         return True
     name = item.value_of("gname") or ""
     return bool(name) and not name.isdigit()
-
-
-def _copy_net_as_gross(item: GoodsItem, schema: Schema) -> None:
-    if item.value_of(_GROSS_FIELD) or not item.value_of(_NET_FIELD):
-        return
-    net = item.fields[_NET_FIELD]
-    spec = schema.field(_GROSS_FIELD)
-    copied = deepcopy(net)
-    copied.name = _GROSS_FIELD
-    copied.display_name = spec.display_name if spec else net.display_name
-    item.fields[_GROSS_FIELD] = copied
-    item.review_reasons = [*item.review_reasons, "net_as_gross"]
 
 
 def _row_reasons(fields: dict[str, ExtractedField]) -> list[str]:
