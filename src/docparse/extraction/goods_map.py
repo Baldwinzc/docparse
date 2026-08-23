@@ -40,7 +40,7 @@ def map_document_goods(
         for sheet, items, _ in mapped:
             if sheet is master_sheet:
                 continue
-            _merge_sheet(merged, items, schema)
+            _merge_by_order(merged, items, schema)
     return merged
 
 
@@ -194,58 +194,63 @@ def _emit(
     )
 
 
-def _merge_sheet(master_items: list[GoodsItem], others: list[GoodsItem], schema: Schema) -> None:
-    for other in others:
-        hit = _match_item(master_items, other, schema.goods_master.match_keys)
-        if hit is None:
-            if not _worth_supplement(other):
-                continue
-            extra = deepcopy(other)
-            extra.source_kind = "supplement"
-            extra.review_reasons = [*extra.review_reasons, "unmatched_supplement"]
-            master_items.append(extra)
+def _merge_by_order(master_items: list[GoodsItem], others: list[GoodsItem], schema: Schema) -> None:
+    """同序对齐。数量对得上才补空；对不上不加行。主表已有值不覆盖。"""
+    for index, master in enumerate(master_items):
+        if index >= len(others):
+            break
+        other = others[index]
+        if not _qty_aligns(master, other, schema):
             continue
         for name, field in other.fields.items():
-            if hit.value_of(name):
+            if master.value_of(name):
                 continue
-            hit.fields[name] = deepcopy(field)
+            master.fields[name] = deepcopy(field)
 
 
-def _match_item(
-    masters: list[GoodsItem],
-    other: GoodsItem,
-    keys: list[str],
-) -> GoodsItem | None:
-    for key in keys:
-        hits = _hits_on(masters, other, key)
-        if len(hits) == 1:
-            return hits[0]
-        if len(hits) > 1:
-            refined = hits
-            for extra in keys:
-                if extra == key:
-                    continue
-                narrowed = _hits_on(refined, other, extra)
-                if len(narrowed) == 1:
-                    return narrowed[0]
-                if len(narrowed) > 1:
-                    refined = narrowed
-    return None
+def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
+    master_qty = _qty_of(master, schema)
+    other_qty = _qty_of(other, schema)
+    if master_qty is None or other_qty is None:
+        return False
+    policy = schema.goods_master
+    delta = abs(master_qty - other_qty)
+    scale = max(abs(master_qty), abs(other_qty), 1.0)
+    return delta <= policy.qty_abs_tol or delta <= policy.qty_rel_tol * scale
 
 
-def _hits_on(items: list[GoodsItem], other: GoodsItem, key: str) -> list[GoodsItem]:
-    needle = _fold_key(other.value_of(key) or "")
-    if not needle:
-        return []
-    return [item for item in items if _fold_key(item.value_of(key) or "") == needle]
+def _qty_of(item: GoodsItem, schema: Schema | None = None) -> float | None:
+    """成交数量：有 gqty 用 gqty；千克用净重；否则总价/单价。"""
+    direct = _as_number(item.value_of("gqty"))
+    if direct is not None:
+        return direct
+    if _is_weight_unit(item.value_of("gunit"), schema):
+        net = _as_number(item.value_of("customNetWt"))
+        if net is not None:
+            return net
+    total = _as_number(item.value_of("declTotal"))
+    price = _as_number(item.value_of("declPrice"))
+    if total is None or price is None or price == 0:
+        return None
+    return total / price
 
 
-def _worth_supplement(item: GoodsItem) -> bool:
-    """对不上主表的行：有税号，或品名不是纯数字，才收成补充项。"""
-    if item.value_of("codeTs"):
-        return True
-    name = item.value_of("gname") or ""
-    return bool(name) and not name.isdigit()
+def _is_weight_unit(unit: str | None, schema: Schema | None) -> bool:
+    text = _fold_key(unit or "")
+    if not text:
+        return False
+    names = schema.goods_master.weight_units if schema is not None else []
+    return any(_fold_key(name) == text for name in names)
+
+
+def _as_number(text: str | None) -> float | None:
+    if not text:
+        return None
+    compact = text.replace(",", "").strip()
+    try:
+        return float(compact)
+    except ValueError:
+        return None
 
 
 def _row_reasons(fields: dict[str, ExtractedField]) -> list[str]:

@@ -12,7 +12,6 @@ from openpyxl.styles import Border, Side
 
 from docparse.adapters.parsers.excel import parse_excel
 from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
-from docparse.schema.loader import load_schema
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
 REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
@@ -203,7 +202,7 @@ def test_hengxin_draft_maps_core_goods_columns() -> None:
     assert all(field.evidence for field in items[0].fields.values())
 
 
-def test_packing_does_not_fill_when_merge_off() -> None:
+def test_packing_fills_gross_when_qty_aligns() -> None:
     document = parse_excel(
         _workbook({"一般贸易出口": _draft, "装箱单": _packing}),
         file_id="mix",
@@ -215,26 +214,74 @@ def test_packing_does_not_fill_when_merge_off() -> None:
     assert items[0].source_role == "draft"
     assert values["gqty"] == "150"
     assert values["customNetWt"] == "5.74"
-    assert items[0].value_of("customGrossWet") is None
-    assert all(
-        not (field.evidence and field.evidence[0].cell.startswith("装箱单!"))
-        for field in items[0].fields.values()
-    )
-
-
-def test_packing_fills_missing_gross_when_merge_on() -> None:
-    document = parse_excel(
-        _workbook({"一般贸易出口": _draft, "装箱单": _packing}),
-        file_id="mix",
-        filename="hengxin.xlsx",
-    )
-    schema = load_schema().model_copy(deep=True)
-    schema.goods_master.merge_supplement = True
-    items = map_document_goods(document, schema)
-    assert len(items) == 1
-    values = _values(items[0])
     assert values["customGrossWet"] == "7.35"
     assert items[0].fields["customGrossWet"].evidence[0].cell.startswith("装箱单!")
+
+
+def test_qty_mismatch_does_not_fill() -> None:
+    def other_qty(sheet) -> None:
+        _packing(sheet)
+        sheet["E12"] = 500
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": _draft, "装箱单": other_qty}),
+        file_id="mis",
+        filename="mismatch-qty.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    assert items[0].value_of("gqty") == "150"
+    assert items[0].value_of("customGrossWet") is None
+
+
+def test_kg_row_uses_net_weight_not_other_qty() -> None:
+    def kg_draft(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = None
+        sheet["F18"] = "千克"
+        sheet["G18"] = 5.74
+        sheet["H18"] = 98
+        sheet["I18"] = 562.52
+
+    def pcs_packing(sheet) -> None:
+        _packing(sheet)
+        sheet["E12"] = 500
+        sheet["I12"] = 7.35
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": kg_draft, "装箱单": pcs_packing}),
+        file_id="kg",
+        filename="kg.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("gunit") == "千克"
+    assert items[0].value_of("gqty") is None
+    assert items[0].value_of("customNetWt") == "5.74"
+    assert items[0].value_of("customGrossWet") is None
+
+
+def test_invoice_qty_fills_when_price_implies_same_qty() -> None:
+    def priced(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = None
+        sheet["H18"] = 98
+        sheet["I18"] = 14700
+
+    def counted(sheet) -> None:
+        _packing(sheet)
+        sheet["E12"] = 150
+        sheet["H12"] = None
+        sheet["I12"] = None
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": priced, "装箱单": counted}),
+        file_id="swap",
+        filename="price-then-qty.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("declPrice") == "98"
+    assert items[0].value_of("declTotal") == "14700"
+    assert items[0].value_of("gqty") == "150"
 
 
 def test_weight_without_gross_leaves_gross_empty() -> None:
@@ -283,12 +330,9 @@ def test_guoguang_packing_is_master_invoice_fills_price() -> None:
     assert values["gname"] == "贴纸"
     assert values["codeTs"] == "4821900000"
     assert values["gqty"] == "100"
-    assert items[0].value_of("declPrice") is None
-    schema = load_schema().model_copy(deep=True)
-    schema.goods_master.merge_supplement = True
-    filled = map_document_goods(document, schema)
-    assert _values(filled[0])["declPrice"] == "0.0181"
-    assert filled[0].fields["declPrice"].evidence[0].cell.startswith("发票!")
+    assert values["declPrice"] == "0.0181"
+    assert values["declTotal"] == "1.81"
+    assert items[0].fields["declPrice"].evidence[0].cell.startswith("发票!")
 
 
 def test_same_name_rows_match_by_qty() -> None:
@@ -333,9 +377,7 @@ def test_same_name_rows_match_by_qty() -> None:
         file_id="dup",
         filename="dup.xlsx",
     )
-    schema = load_schema().model_copy(deep=True)
-    schema.goods_master.merge_supplement = True
-    items = map_document_goods(document, schema)
+    items = map_document_goods(document)
     caps = [item for item in items if item.value_of("gname") == "电容"]
     assert len(caps) == 2
     by_qty = {item.value_of("gqty"): item.value_of("declPrice") for item in caps}
@@ -358,15 +400,10 @@ def test_unmatched_packing_row_is_supplement() -> None:
         file_id="extra",
         filename="extra.xlsx",
     )
-    assert all(item.source_kind == "primary" for item in map_document_goods(document))
-    schema = load_schema().model_copy(deep=True)
-    schema.goods_master.merge_supplement = True
-    items = map_document_goods(document, schema)
-    assert len(items) == 2
-    extra = next(item for item in items if item.source_kind == "supplement")
-    assert extra.value_of("gname") == "配件"
-    assert extra.source_role == "packing"
-    assert "unmatched_supplement" in extra.review_reasons
+    items = map_document_goods(document)
+    assert len(items) == 1
+    assert all(item.source_kind == "primary" for item in items)
+    assert all(item.value_of("gname") != "配件" for item in items)
 
 
 @pytest.mark.skipif(not REAL_HENGXIN.exists(), reason="本地恒信样本不在 CI")
@@ -405,6 +442,6 @@ def test_guoguang_sample_goods() -> None:
     assert first.source_role == "packing"
     assert values["gname"] == "贴纸"
     assert values["codeTs"] == "4821900000"
-    assert first.value_of("declPrice") is None
+    assert values["declPrice"] == "0.0181"
     assert all(item.source_kind == "primary" for item in items)
     assert all(field.evidence for field in first.fields.values())
