@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse
 
 from docparse.api.caller import RESERVED_FORM_KEYS, collect_caller
+from docparse.api.catalog import schema_catalog
 from docparse.api.errors import bad_request, not_found
 from docparse.api.schemas import JOB_EXAMPLE, multipart_openapi
 from docparse.domain.models import Job
 from docparse.pipeline.runner import Pipeline
+
+_REVIEW_PAGE = Path(__file__).with_name("static") / "review.html"
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -34,6 +39,17 @@ def _truthy(value: object) -> bool:
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/")
+@router.get("/review")
+def review_page() -> FileResponse:
+    return FileResponse(_REVIEW_PAGE, media_type="text/html; charset=utf-8")
+
+
+@router.get("/v1/schema")
+def get_schema() -> dict:
+    return schema_catalog()
 
 
 @router.post(

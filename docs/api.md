@@ -1,11 +1,12 @@
 # FastAPI：一张报关单 JSON
 
-`POST /v1/jobs` 收文件和调用方参数，走与 `cli declare` 同一条 pipeline，交出一张报关单。本层不解析、不认公司。
+`POST /v1/jobs` 收文件和调用方参数，走与 `cli declare` 同一条 pipeline，交出一张报关单。本层不解析、不认公司。对眼页见 [review.md](review.md)。
 
 本地：
 
 ```bash
-uvicorn docparse.api.app:app --host 127.0.0.1 --port 8088
+PYTHONPATH=src uvicorn docparse.api.app:app --host 127.0.0.1 --port 8088
+# 浏览器打开 http://127.0.0.1:8088/review
 python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --agent-name 深圳市泰洲物流有限公司
 ```
 
