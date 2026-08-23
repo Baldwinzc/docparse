@@ -32,6 +32,7 @@ class FieldSpec(BaseModel):
     # 商品列映射（#18）。keep=原样；skip=本层不映射；
     # leading_hs=取列值前缀税则号；raw_review=原文 + needs_review。
     goods_map: str = "keep"
+    default: str | None = None
 
     @model_validator(mode="after")
     def check_maps(self) -> "FieldSpec":

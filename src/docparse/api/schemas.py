@@ -60,10 +60,13 @@ def multipart_openapi(schema: Schema | None = None) -> dict:
     }
     for name in accepted_caller_keys(schema):
         spec = schema.field(name)
-        properties[name] = {
+        field = {
             "type": "string",
             "description": spec.display_name if spec else name,
         }
+        if spec is not None and spec.default:
+            field["default"] = spec.default
+        properties[name] = field
     return {
         "requestBody": {
             "required": True,

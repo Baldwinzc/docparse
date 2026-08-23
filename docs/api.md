@@ -16,7 +16,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 | 部分 | 来源 | 说明 |
 |---|---|---|
 | `file` | 上传 | 本期 xlsx；以后同一接口接 PDF / zip |
-| `agentCode` / `agentName` / `agentScc` / `agentCiqCode` | `fields.yaml` `caller_params` | 不解析，原样进单 |
+| `agentCode` / `agentName` / `agentScc` / `agentCiqCode` | `fields.yaml` `caller_params` | 不解析。没传则用 YAML `default`（泰洲） |
 | `cusIEFlag` | `assembly.defaults` 可覆盖 | 默认 `E`；进口传 `I` |
 | `run` | 已有 | 默认 true，同步跑完 |
 
@@ -62,6 +62,7 @@ Job
 | 新表头 / 货列 | `fields.yaml` | 否（declaration / reviews 按目录收） |
 | 新字段要转 code | 字段写 `code_table` + 码表加行 | 否 |
 | 多一个申报单位字段 | `caller_params` 加一项 | 否（Form / OpenAPI 从 YAML 生成） |
+| 换默认申报单位 | `caller_params` 的 `default` | 否 |
 | 调用方要覆盖进出口标志 | 请求带 `cusIEFlag` | 否 |
 | 以后上传 PDF | #22 / #23 parser | 否（同一 `POST /v1/jobs`） |
 | zip 多文件拼一张单 | assemble / `extract_fields_step` 主文档选择 | 否（入口已是 list） |

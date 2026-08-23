@@ -78,10 +78,25 @@ def test_missing_gross_is_needs_review_not_500() -> None:
     declaration = body["result"]["declaration"]
     assert declaration["grossWt"] == ""
     assert declaration["netWt"] == "2825.47"
-    assert declaration["agentCode"] == ""
+    assert declaration["agentCode"] == "4403180867"
+    assert declaration["agentName"] == "深圳市泰洲物流有限公司"
+    assert declaration["agentScc"] == "914403000539716870"
+    assert declaration["agentCiqCode"] == "4700910159"
     paths = {item["path"]: item for item in body["result"]["reviews"]}
     assert "grossWt" in paths
     assert "net_is_not_gross" in paths["grossWt"]["reasons"]
+
+
+def test_explicit_empty_agent_skips_yaml_default() -> None:
+    response = _client().post(
+        "/v1/jobs",
+        files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},
+        data={"agentCode": "", "agentName": "", "agentScc": "", "agentCiqCode": ""},
+    )
+    assert response.status_code == 200
+    declaration = response.json()["result"]["declaration"]
+    assert declaration["agentCode"] == ""
+    assert declaration["agentName"] == ""
 
 
 def test_default_pipeline_upload_does_not_500() -> None:
@@ -109,6 +124,7 @@ def test_openapi_shows_caller_and_goods_array() -> None:
     spec = _client().get("/openapi.json").json()
     text = str(spec)
     assert "agentCode" in text
+    assert "4403180867" in text
     assert "tdecGoodsitemsVoArr" in text
     assert "/v1/jobs" in spec["paths"]
     assert "/health" in spec["paths"]

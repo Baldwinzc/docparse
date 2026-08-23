@@ -210,6 +210,7 @@ def test_agent_fields_are_caller_params() -> None:
         assert spec.parse is False
         assert spec.layout == "caller"
         assert spec.group == "caller"
+        assert spec.default
 
 
 def test_ignored_items_listed() -> None:
