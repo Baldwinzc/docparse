@@ -209,8 +209,8 @@ def _merge_by_order(master_items: list[GoodsItem], others: list[GoodsItem], sche
 
 
 def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
-    master_qty = _qty_of(master)
-    other_qty = _qty_of(other)
+    master_qty = _qty_of(master, schema)
+    other_qty = _qty_of(other, schema)
     if master_qty is None or other_qty is None:
         return False
     policy = schema.goods_master
@@ -219,15 +219,28 @@ def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
     return delta <= policy.qty_abs_tol or delta <= policy.qty_rel_tol * scale
 
 
-def _qty_of(item: GoodsItem) -> float | None:
+def _qty_of(item: GoodsItem, schema: Schema | None = None) -> float | None:
+    """成交数量：有 gqty 用 gqty；千克用净重；否则总价/单价。"""
     direct = _as_number(item.value_of("gqty"))
     if direct is not None:
         return direct
+    if _is_weight_unit(item.value_of("gunit"), schema):
+        net = _as_number(item.value_of("customNetWt"))
+        if net is not None:
+            return net
     total = _as_number(item.value_of("declTotal"))
     price = _as_number(item.value_of("declPrice"))
     if total is None or price is None or price == 0:
         return None
     return total / price
+
+
+def _is_weight_unit(unit: str | None, schema: Schema | None) -> bool:
+    text = _fold_key(unit or "")
+    if not text:
+        return False
+    names = schema.goods_master.weight_units if schema is not None else []
+    return any(_fold_key(name) == text for name in names)
 
 
 def _as_number(text: str | None) -> float | None:

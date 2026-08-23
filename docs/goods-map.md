@@ -73,13 +73,13 @@ Sheet.tables + consume
 补空条件：
 
 1. 行序对齐
-2. 数量对得上。主表要有 `gqty`；副表用 `gqty`，或 `declTotal / declPrice`。两边差在 `qty_abs_tol` / `qty_rel_tol` 内才补
+2. 两边都能推出数量，且对得上（`qty_abs_tol` / `qty_rel_tol`）才补。来源同一套：有 `gqty` 用 `gqty`；单位在 `weight_units`（千克等）用净重；否则 `declTotal / declPrice`
 3. 主表已有值不覆盖
 4. 对不上：不补这一行，不加 supplement 行
 
-恒信第 2 项草单数量空、箱单 500：主表没有数量可对，不补。国光箱单 100、发票 100×单价=总价：对上，补单价总价。
+恒信千克行：净重当数量，箱单 500 对不上，不补。国光：箱单有数量、发票用总价/单价推出数量，对上则补价。主表有价、副表有数量时也一样。
 
-容差在 `goods_master.qty_rel_tol` / `qty_abs_tol`。
+容差和千克词表在 `goods_master`。
 
 ## 以后新 xlsx / 新叫法改哪
 
@@ -95,6 +95,7 @@ Sheet.tables + consume
 | 主表判定要加信号（备案序号） | `goods_master.signals` | 否 |
 | 关掉跨表补货 | `goods_master.merge_supplement: false` | 否 |
 | 数量容差 | `qty_rel_tol` / `qty_abs_tol` | 否 |
+| 千克等重量单位叫法 | `goods_master.weight_units` | 否 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
 | 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |

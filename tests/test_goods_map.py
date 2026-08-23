@@ -234,6 +234,56 @@ def test_qty_mismatch_does_not_fill() -> None:
     assert items[0].value_of("customGrossWet") is None
 
 
+def test_kg_row_uses_net_weight_not_other_qty() -> None:
+    def kg_draft(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = None
+        sheet["F18"] = "千克"
+        sheet["G18"] = 5.74
+        sheet["H18"] = 98
+        sheet["I18"] = 562.52
+
+    def pcs_packing(sheet) -> None:
+        _packing(sheet)
+        sheet["E12"] = 500
+        sheet["I12"] = 7.35
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": kg_draft, "装箱单": pcs_packing}),
+        file_id="kg",
+        filename="kg.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("gunit") == "千克"
+    assert items[0].value_of("gqty") is None
+    assert items[0].value_of("customNetWt") == "5.74"
+    assert items[0].value_of("customGrossWet") is None
+
+
+def test_invoice_qty_fills_when_price_implies_same_qty() -> None:
+    def priced(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = None
+        sheet["H18"] = 98
+        sheet["I18"] = 14700
+
+    def counted(sheet) -> None:
+        _packing(sheet)
+        sheet["E12"] = 150
+        sheet["H12"] = None
+        sheet["I12"] = None
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": priced, "装箱单": counted}),
+        file_id="swap",
+        filename="price-then-qty.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("declPrice") == "98"
+    assert items[0].value_of("declTotal") == "14700"
+    assert items[0].value_of("gqty") == "150"
+
+
 def test_weight_without_gross_leaves_gross_empty() -> None:
     document = parse_excel(
         _workbook({"一般贸易出口": _draft}),

@@ -11,6 +11,7 @@ goods_master:
   merge_supplement: true
   qty_rel_tol: 0.005
   qty_abs_tol: 0.05
+  weight_units: [千克, 公斤, kg, KG]
   match_keys: [gno, codeTs, gname, gqty]
   role_bonus:
     draft: 10
