@@ -8,6 +8,7 @@ goods_array: tdecGoodsitemsVoArr
 # 主货表计分（#18）。看已映射列，不看公司名。draft 加权，auxiliary / unknown 不参与。
 goods_master:
   min_score: 1
+  merge_supplement: false
   match_keys: [gno, codeTs, gname, gqty]
   role_bonus:
     draft: 10
