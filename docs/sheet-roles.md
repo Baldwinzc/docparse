@@ -2,7 +2,7 @@
 
 运行时读取 [`src/docparse/schema/sheet_roles.yaml`](../src/docparse/schema/sheet_roles.yaml)。打分器在 `extraction/sheet_role.py`。Excel 拆完 KV / table 后贴标签；`cli layout` 一并打出。
 
-本文件只回答「这张 sheet 在业务上是什么、下一张报关单吃不吃」。不映射 `contrNo`（#17）/ 商品行（#18），不拼整单（#19）。
+本文件只回答「这张 sheet 在业务上是什么、下一张报关单吃不吃」。不映射 `contrNo`（#17）/ 商品行（#18）。拼整单见 [assemble.md](assemble.md)（#19）。
 
 ## 角色与消费
 
