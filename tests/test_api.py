@@ -8,7 +8,9 @@ pytest.importorskip("openpyxl")
 
 from fastapi.testclient import TestClient
 
+from docparse.adapters.files.factory import _file_store
 from docparse.adapters.files.memory import MemoryFileStore
+from docparse.adapters.jobs.factory import _job_store
 from docparse.adapters.jobs.memory import MemoryJobStore
 from docparse.api.app import create_app
 from docparse.api.routes import get_pipeline
@@ -80,6 +82,22 @@ def test_missing_gross_is_needs_review_not_500() -> None:
     paths = {item["path"]: item for item in body["result"]["reviews"]}
     assert "grossWt" in paths
     assert "net_is_not_gross" in paths["grossWt"]["reasons"]
+
+
+def test_default_pipeline_upload_does_not_500() -> None:
+    """Swagger / uvicorn 走 get_pipeline()，不能把 Settings 丢进 lru_cache。"""
+    get_pipeline.cache_clear()
+    _job_store.cache_clear()
+    _file_store.cache_clear()
+    app = create_app()
+    response = TestClient(app).post(
+        "/v1/jobs",
+        files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},
+        data={"agentCode": "4403180867"},
+    )
+    assert response.status_code == 200
+    assert response.json()["result"]["declaration"]["contrNo"] == "HDX2026-251"
+    get_pipeline.cache_clear()
 
 
 def test_missing_file_is_400() -> None:
