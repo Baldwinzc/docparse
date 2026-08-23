@@ -319,6 +319,8 @@ table:
         source: "#12 商品对照「商品编码」；恒信 Sheet3!H1 工作表有同名，不作为主依据"
       - text: 海关编码
         source: 国光总箱单!Q12「HS CODE海关编码」
+      - text: 海关十位编码
+        source: "#54 整词 KV/列名；不等于「海关编码」"
       - text: "HS"
         source: 国光总箱单!Q12「HS CODE海关编码」。短 token，表头行 ≥2 命中才生效
 

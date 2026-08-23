@@ -772,7 +772,7 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [商品编号, 项目编号, 商品编码, 海关编码, HS]
+    anchors: [商品编号, 项目编号, 商品编码, 海关编码, 海关十位编码, HS]
     goods_map: leading_hs
     notes: HS 编码。列值前缀 8–10 位数字时只取编号。
 
