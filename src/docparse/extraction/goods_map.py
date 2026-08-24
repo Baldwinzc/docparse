@@ -195,31 +195,49 @@ def _emit(
 
 
 def _merge_by_order(master_items: list[GoodsItem], others: list[GoodsItem], schema: Schema) -> None:
-    """同序对齐。数量对得上才补空；对不上不加行。主表已有值不覆盖。"""
+    """同序对齐。计算链字段走数量闸，其余字段检测到即补。主表已有值不覆盖。"""
+    skip = set(schema.goods_master.skip_fill)
+    gated = set(schema.goods_master.gated_fields)
     for index, master in enumerate(master_items):
         if index >= len(others):
             break
         other = others[index]
-        if not _qty_aligns(master, other, schema):
-            continue
-        skip = set(schema.goods_master.skip_fill)
+        unit_aligns = _unit_aligns(master, other, schema)
+        qty_aligns = unit_aligns and _qty_aligns(master, other, schema)
         for name, field in other.fields.items():
             if name in skip or master.value_of(name):
+                continue
+            if name in gated and not qty_aligns:
                 continue
             if not _fill_allowed(master, name, field, schema):
                 continue
             master.fields[name] = deepcopy(field)
 
 
-def _fill_allowed(master: GoodsItem, name: str, field: ExtractedField, schema: Schema) -> bool:
-    """千克行数量格只收与净重一致的候选值：净重即数量，件数混进数量列会错。"""
-    if name != "gqty" or not _is_weight_unit(master.value_of("gunit"), schema):
+def _unit_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
+    """单位语义对上才可能对数量：千克 vs 只，数量不可比。"""
+    master_unit = (master.value_of("gunit") or "").strip()
+    other_unit = (other.value_of("gunit") or "").strip()
+    if not master_unit or not other_unit:
         return True
-    net = _as_number(master.value_of("customNetWt"))
-    candidate = _as_number(field.value)
-    if net is None or candidate is None:
-        return False
-    return _close(net, candidate, schema)
+    return _fold_key(master_unit) == _fold_key(other_unit)
+
+
+def _fill_allowed(master: GoodsItem, name: str, field: ExtractedField, schema: Schema) -> bool:
+    """字段级闸：千克行数量格候选值须 ≈ 净重；毛重候选值须 ≥ 净重（占位 0 会被拦）。"""
+    if name == "gqty" and _is_weight_unit(master.value_of("gunit"), schema):
+        net = _as_number(master.value_of("customNetWt"))
+        candidate = _as_number(field.value)
+        if net is None or candidate is None:
+            return False
+        return _close(net, candidate, schema)
+    if name == "customGrossWet":
+        net = _as_number(master.value_of("customNetWt"))
+        gross = _as_number(field.value)
+        if net is None or gross is None:
+            return True
+        return gross >= net
+    return True
 
 
 def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:

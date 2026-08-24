@@ -13,6 +13,7 @@ goods_master:
   qty_abs_tol: 0.05
   weight_units: [千克, 公斤, kg, KG]
   skip_fill: []
+  gated_fields: [gqty, customNetWt, declPrice, declTotal, gunit]
   match_keys: [gno, codeTs, gname, gqty]
   role_bonus:
     draft: 10
@@ -926,7 +927,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [总毛重, 毛重, "G.W.", "G.W", GW]
-    notes: json 原字段名 Wet。没有毛重列就空着；行对齐后可从副表补（如箱单 G.W.）。不参与数量对齐。
+    notes: json 原字段名 Wet。没有毛重列就空着；行序对上即补，但候选值须 ≥ 该行净重（占位 0 被拦）。
 
   - name: customNetWt
     display_name: 自定义净重
