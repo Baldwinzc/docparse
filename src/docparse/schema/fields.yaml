@@ -12,6 +12,7 @@ goods_master:
   qty_rel_tol: 0.005
   qty_abs_tol: 0.05
   weight_units: [千克, 公斤, kg, KG]
+  skip_fill: []
   match_keys: [gno, codeTs, gname, gqty]
   role_bonus:
     draft: 10
@@ -835,7 +836,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
     anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty]
-    notes: 海关商品表优先。别名交 #13。
+    notes: 海关商品表优先。别名交 #13。千克行跨表补数量，候选值须与净重一致（goods_master 容差）。
 
   - name: gunit
     display_name: 成交单位
@@ -925,7 +926,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list]
     anchors: [总毛重, 毛重, "G.W.", "G.W", GW]
-    notes: json 原字段名 Wet。没有毛重列就空着，不把净重抄过来。
+    notes: json 原字段名 Wet。没有毛重列就空着；行对齐后可从副表补（如箱单 G.W.）。不参与数量对齐。
 
   - name: customNetWt
     display_name: 自定义净重

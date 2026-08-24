@@ -202,10 +202,24 @@ def _merge_by_order(master_items: list[GoodsItem], others: list[GoodsItem], sche
         other = others[index]
         if not _qty_aligns(master, other, schema):
             continue
+        skip = set(schema.goods_master.skip_fill)
         for name, field in other.fields.items():
-            if master.value_of(name):
+            if name in skip or master.value_of(name):
+                continue
+            if not _fill_allowed(master, name, field, schema):
                 continue
             master.fields[name] = deepcopy(field)
+
+
+def _fill_allowed(master: GoodsItem, name: str, field: ExtractedField, schema: Schema) -> bool:
+    """千克行数量格只收与净重一致的候选值：净重即数量，件数混进数量列会错。"""
+    if name != "gqty" or not _is_weight_unit(master.value_of("gunit"), schema):
+        return True
+    net = _as_number(master.value_of("customNetWt"))
+    candidate = _as_number(field.value)
+    if net is None or candidate is None:
+        return False
+    return _close(net, candidate, schema)
 
 
 def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
@@ -213,21 +227,30 @@ def _qty_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
     other_qty = _qty_of(other, schema)
     if master_qty is None or other_qty is None:
         return False
+    return _close(master_qty, other_qty, schema)
+
+
+def _close(left: float, right: float, schema: Schema) -> bool:
     policy = schema.goods_master
-    delta = abs(master_qty - other_qty)
-    scale = max(abs(master_qty), abs(other_qty), 1.0)
+    delta = abs(left - right)
+    scale = max(abs(left), abs(right), 1.0)
     return delta <= policy.qty_abs_tol or delta <= policy.qty_rel_tol * scale
 
 
 def _qty_of(item: GoodsItem, schema: Schema | None = None) -> float | None:
-    """成交数量：有 gqty 用 gqty；千克用净重；否则总价/单价。"""
-    direct = _as_number(item.value_of("gqty"))
-    if direct is not None:
-        return direct
+    """千克：净重即数量，缺净重退总价/单价（单价是每千克价）。其它：gqty，否则总价/单价。毛重不参与。"""
     if _is_weight_unit(item.value_of("gunit"), schema):
         net = _as_number(item.value_of("customNetWt"))
         if net is not None:
             return net
+        return _total_over_price(item)
+    direct = _as_number(item.value_of("gqty"))
+    if direct is not None:
+        return direct
+    return _total_over_price(item)
+
+
+def _total_over_price(item: GoodsItem) -> float | None:
     total = _as_number(item.value_of("declTotal"))
     price = _as_number(item.value_of("declPrice"))
     if total is None or price is None or price == 0:

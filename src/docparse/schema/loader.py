@@ -71,6 +71,7 @@ class GoodsMaster(BaseModel):
     qty_rel_tol: float = 0.005
     qty_abs_tol: float = 0.05
     weight_units: list[str] = Field(default_factory=lambda: ["千克", "公斤", "kg", "KG"])
+    skip_fill: list[str] = Field(default_factory=list)
 
 
 _FILL_MODES = frozenset({"overwrite", "fill", "ignore"})
