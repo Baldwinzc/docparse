@@ -12,6 +12,7 @@ from openpyxl.styles import Border, Side
 
 from docparse.adapters.parsers.excel import parse_excel
 from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
+from docparse.schema.loader import load_schema
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
 REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
@@ -224,6 +225,8 @@ def test_ten_digit_customs_code_header_maps_hs() -> None:
     assert items[0].value_of("codeTs") == "4821900000"
     assert items[0].value_of("gname") == "贴纸"
 
+
+def test_packing_fills_gross_when_qty_aligns() -> None:
     document = parse_excel(
         _workbook({"一般贸易出口": _draft, "装箱单": _packing}),
         file_id="mix",
@@ -237,6 +240,19 @@ def test_ten_digit_customs_code_header_maps_hs() -> None:
     assert values["customNetWt"] == "5.74"
     assert values["customGrossWet"] == "7.35"
     assert items[0].fields["customGrossWet"].evidence[0].cell.startswith("装箱单!")
+
+
+def test_skip_fill_knob_blocks_configured_field() -> None:
+    schema = load_schema().model_copy(deep=True)
+    schema.goods_master.skip_fill = ["customGrossWet"]
+    document = parse_excel(
+        _workbook({"一般贸易出口": _draft, "装箱单": _packing}),
+        file_id="skip",
+        filename="skip.xlsx",
+    )
+    items = map_document_goods(document, schema)
+    assert items[0].value_of("gqty") == "150"
+    assert items[0].value_of("customGrossWet") is None
 
 
 def test_qty_mismatch_does_not_fill() -> None:
@@ -279,6 +295,41 @@ def test_kg_row_uses_net_weight_not_other_qty() -> None:
     assert items[0].value_of("gqty") is None
     assert items[0].value_of("customNetWt") == "5.74"
     assert items[0].value_of("customGrossWet") is None
+
+
+def test_kg_row_fills_qty_only_when_close_to_net() -> None:
+    def kg_draft(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = None
+        sheet["F18"] = "千克"
+        sheet["G18"] = 5.74
+        sheet["H18"] = 98
+        sheet["I18"] = 562.52
+
+    def kg_packing(sheet) -> None:
+        _packing(sheet)
+        sheet["F11"] = "Unit(单位）"
+        sheet["F12"] = "千克"
+        sheet["E12"] = 500
+
+    def kg_invoice(sheet) -> None:
+        _invoice(sheet)
+        sheet["D17"] = 5.74
+        sheet["F17"] = 98
+        sheet["G17"] = 562.52
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": kg_draft, "装箱单": kg_packing, "发票": kg_invoice}),
+        file_id="kgfill",
+        filename="kgfill.xlsx",
+    )
+    items = map_document_goods(document)
+    item = items[0]
+    assert item.value_of("gunit") == "千克"
+    assert item.value_of("gqty") == "5.74"
+    assert item.fields["gqty"].evidence[0].cell.startswith("发票!")
+    assert item.value_of("customGrossWet") == "7.35"
+    assert item.fields["customGrossWet"].evidence[0].cell.startswith("装箱单!")
 
 
 def test_invoice_qty_fills_when_price_implies_same_qty() -> None:
@@ -446,7 +497,14 @@ def test_hengxin_sample_goods() -> None:
     assert all(item.source_kind == "primary" for item in items)
     assert all(item.source_role != "auxiliary" for item in items)
     if len(items) >= 2:
-        assert items[1].value_of("gqty") != "500"
+        second = items[1]
+        assert second.value_of("gunit") == "千克"
+        assert second.value_of("gqty") != "500"
+        assert second.value_of("gqty") == second.value_of("customNetWt")
+        assert second.fields["gqty"].evidence[0].cell.startswith("发票!")
+        assert second.value_of("customGrossWet") == "10.38"
+        assert second.fields["customGrossWet"].evidence[0].cell.startswith("裝箱單!")
+    assert first.value_of("customGrossWet") == "7.35"
     assert all(field.evidence for field in first.fields.values())
 
 

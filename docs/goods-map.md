@@ -73,13 +73,14 @@ Sheet.tables + consume
 补空条件：
 
 1. 行序对齐
-2. 两边都能推出数量，且对得上（`qty_abs_tol` / `qty_rel_tol`）才补。来源同一套：有 `gqty` 用 `gqty`；单位在 `weight_units`（千克等）用净重；否则 `declTotal / declPrice`
-3. 主表已有值不覆盖
-4. 对不上：不补这一行，不加 supplement 行
+2. 两边都能推出数量，且对得上才补。千克：净重（缺净重退总价/单价，单价是每千克价）。非千克：`gqty`，否则总价/单价。毛重不参与对齐
+3. 主表已有值不覆盖；过闸字段皆可补（含毛重）；`skip_fill` 默认空，个别列不要跨表抄再配
+4. 千克行数量格补值须 ≈ 该行净重（数量列可能混件数，如箱单 Ship Q'ty）
+5. 对不上：不补这一行，不加 supplement 行
 
-恒信千克行：净重当数量，箱单 500 对不上，不补。国光：箱单有数量、发票用总价/单价推出数量，对上则补价。主表有价、副表有数量时也一样。
+恒信第 1 项（只/150）数量对上，补箱单毛重 7.35。第 2 项（千克）净重对净重对得上，补箱单毛重 10.38；箱单数量列是件数 500 ≠ 净重不吃，发票 7.53 = 净重补数量。国光单价总价仍按数量闸补。
 
-容差和千克词表在 `goods_master`。
+容差、千克词表、不抄字段在 `goods_master`。
 
 ## 以后新 xlsx / 新叫法改哪
 
@@ -96,6 +97,8 @@ Sheet.tables + consume
 | 关掉跨表补货 | `goods_master.merge_supplement: false` | 否 |
 | 数量容差 | `qty_rel_tol` / `qty_abs_tol` | 否 |
 | 千克等重量单位叫法 | `goods_master.weight_units` | 否 |
+| 某列不要从副表抄（默认无） | `goods_master.skip_fill` | 否 |
+| 千克行数量补值须≈净重 | 内置规则，容差同 `qty_*` | 否 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
 | 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
