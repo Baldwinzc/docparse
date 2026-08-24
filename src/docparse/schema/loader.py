@@ -72,6 +72,9 @@ class GoodsMaster(BaseModel):
     qty_abs_tol: float = 0.05
     weight_units: list[str] = Field(default_factory=lambda: ["千克", "公斤", "kg", "KG"])
     skip_fill: list[str] = Field(default_factory=list)
+    gated_fields: list[str] = Field(
+        default_factory=lambda: ["gqty", "customNetWt", "declPrice", "declTotal", "gunit"]
+    )
 
 
 _FILL_MODES = frozenset({"overwrite", "fill", "ignore"})
