@@ -214,7 +214,8 @@ class TestSignatures:
             timestamp=1700000000,
             payload='{"ImageBase64":"eA=="}',
         )
-        assert headers["Authorization"].startswith("TC3-HMAC-SHA256 Credential=AKIDtest,")
+        assert headers["Authorization"].startswith("TC3-HMAC-SHA256 Credential=AKIDtest/")
+        assert "/ocr/tc3_request, " in headers["Authorization"]
         assert headers["X-TC-Action"] == "GeneralBasicOCR"
 
 

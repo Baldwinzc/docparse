@@ -163,11 +163,12 @@ def tc3_authorization(
     secret_service = _hmac(secret_date, service)
     secret_signing = _hmac(secret_service, "tc3_request")
     signature = hmac.new(secret_signing, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+    authorization = (
+        f"TC3-HMAC-SHA256 Credential={secret_id}/{credential_scope}, "
+        f"SignedHeaders=content-type;host, Signature={signature}"
+    )
     return {
-        "Authorization": (
-            f"TC3-HMAC-SHA256 Credential={secret_id}, SignedHeaders=content-type;host, "
-            f"Signature={signature}"
-        ),
+        "Authorization": authorization,
         "Content-Type": content_type,
         "X-TC-Action": action,
         "X-TC-Version": api_version,
