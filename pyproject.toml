@@ -23,6 +23,7 @@ dependencies = [
 dev = ["pytest>=8.3", "ruff>=0.8", "openpyxl>=3.1"]
 pdf = ["pymupdf>=1.24"]
 excel = ["openpyxl>=3.1"]
+bench = ["pymupdf>=1.24", "pillow>=10.0"]
 
 [project.scripts]
 docparse = "docparse.cli:main"
@@ -32,7 +33,7 @@ packages = ["src/docparse"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "."]
 
 [tool.ruff]
 line-length = 100
