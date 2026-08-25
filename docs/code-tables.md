@@ -11,6 +11,7 @@
 | 方向 | `lookup(表, 名称) → code`；`reverse(表, code) → 名称` |
 | 比较 | `strip` 后**整词相等**。不模糊、不含、不别名 |
 | 未知名称 | 返回 `None`，不默认 FOB / 一般贸易 |
+| 反查兜底（#66） | `known_code(表, 值)`：值本身已是这张表的 code（如 GSC `iePort=5304`）→ assemble 接受，不报 `unknown_code`，payload 仍展示原值 |
 | 未知表名 | 抛 `ValueError`（含客户表没有、标了 pending 的表） |
 | 一对多 | 0 或 >1 个命中都返回 `None`，不瞎选 |
 | code 形态 | 一律字符串。`4` 不补成 `04`；`0110` 保留前导零 |

@@ -337,6 +337,11 @@ def _apply_lookup(field: ExtractedField, spec: FieldSpec, codes: CodeTables) -> 
         field.validation_errors = [*field.validation_errors, f"code_table_pending:{table}"]
         return
     if code is None:
+        # 反查兜底（#66）：值本身已是码表 code（如 GSC iePort=5304）则接受，
+        # 不再报 unknown_code。payload 展示仍是原值。
+        if codes.known_code(table, raw):
+            field.normalized_value = raw
+            return
         field.status = FieldStatus.NEEDS_REVIEW
         field.validation_errors = [*field.validation_errors, f"unknown_code:{table}"]
         return

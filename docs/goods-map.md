@@ -13,7 +13,7 @@ python -m docparse.cli goods /绝对路径/表.xlsx
 ```text
 Sheet.tables + consume
   → 只处理 consume ≠ exclude
-  → 列名对 fields.yaml goods.anchors（去空白、大小写不敏感；英文按词边界）
+  → 列名对 fields.yaml goods.anchors（键归一化：去空白、全角括号统一；英文按词边界）
   → 每张 sheet 先出带角色的货行
   → 按 goods_master 计分选一张主表
   → merge_supplement 默认 true：同序对齐，数量对上才补空
@@ -23,6 +23,12 @@ Sheet.tables + consume
 `auxiliary` / `unknown` 的 table 留在 IR，本层不读。
 
 一份 xlsx 最终只有**一张**货表。箱单 / 发票 / 合同不能另开一张报关单。
+
+## 列归属（#66）
+
+每列归哪个字段是恒定规则：按锚点在 fields.yaml 里的**先后**（先专后泛，如申报要素 > 规格型号 > 商品规格），再看锚点长度。
+
+同一字段多列命中时才看数据形状：**常量列降级**——行数 >1 且非空值全部相同的列是合计列（通达2「总净重(千克)」全表 1793.6065），不抢行级列（「净重(千克)」）；国光「总净重 NW」每行不同，不受影响，仍按锚点顺序赢。
 
 ## 主货表
 
@@ -91,6 +97,8 @@ Sheet.tables + consume
 |---|---|---|
 | 列名没见过，layout 都没拆出表 | `layout_vocab.yaml` TABLE alias | 否 |
 | layout 有了，对不上报关字段 | 已有字段的 `anchors` | 否 |
+| 列名带空白 / 换行 / 尾码 | 已被键归一化吃掉，不用管 | 否 |
+| 「总净重」抢了「净重」 | 常量列降级已处理；若合计列每行不同，把专用列名写进 anchors 更前面 | 否 |
 | 语义是新的商品字段 | `fields.yaml` `goods:` 新字段 + anchors | 否（映射器按目录走） |
 | 新单据类型要参与补货 | `sheet_roles.yaml` 加 role，`consume: supplement` | 否 |
 | 新辅助表（料号对照） | `auxiliary` 加信号 | 否 |

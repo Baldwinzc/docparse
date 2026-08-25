@@ -1,5 +1,8 @@
 # 版面词表（Issue #13 / #15）
 # BOX：去冒号后整词相等；整行都是 BOX 才不当表头（占位格视同空，#64）。
+# 键匹配走 textnorm 键归一化（#66）：去全部空白、全角括号统一、
+# 键尾剥「（≤6 位字母数字）」码（「贸易方式（0110）」＝「贸易方式」）。
+# 抽出的 key 仍是格子原文；繁体不转换，靠 alias 收（「淨重」）。
 # KV：商业单据键，匹配同 BOX，但不参与「整行 BOX 不当表头」。
 # TABLE：子串匹配（英文大小写不敏感），一行 ≥2 命中才当表头；
 # 行内混纯数值 / 日期 / 占位格的不当表头（#64）。
@@ -39,6 +42,14 @@ box:
         source: GSC出仓!A3 旧叫法＝境内收发货人。词表键化后挡住「出口口岸=经营单位」错配（#64）
       - text: 收货单位
         source: GSC出仓!A4 旧叫法＝境内收货人；当纳利装箱单 A4「收货单位：」同源（#64）
+
+  - id: credit_code
+    value:
+      type: pattern
+      pattern: '^[A-Z0-9]{18}$'
+    aliases:
+      - text: 信用代码
+        source: "#12 tradeScc anchors；GSRUA 境内发货人右侧格是 18 位信用代码（#66）"
 
   - id: declare_unit
     aliases:
@@ -94,6 +105,8 @@ box:
     aliases:
       - text: 备案号
         source: 恒信草单 一般贸易出口!N3。值域挡「备案号=运输工具」类标签错配（#64）
+      - text: 账册号
+        source: 通达2 扁平表头列名；fields.yaml manualNo 同步（#66）
 
   - id: overseas_party
     aliases:
@@ -135,11 +148,13 @@ box:
         source: 恒信草单 一般贸易出口!E7（G7 标签错写，#9 已知不修）
       - text: 贸易方式
         source: "#12 supvModeCdde anchors"
+      - text: 貿易方式
+        source: 当纳利出口发票!A9 繁体；词表键归一剥尾码后「贸易方式（0110）」也能打中（#66）
 
   - id: cut_mode
     aliases:
       - text: 征免性质
-        source: 恒信草单 一般贸易出口!I7
+        source: 恒信草单 一般贸易出口!I7；多科报关单!H6「征免性质（101）」剥尾码后同键（#66）
 
   - id: license_no
     value:
@@ -196,6 +211,8 @@ box:
         source: 恒信草单 一般贸易出口!A11
       - text: 包装类型
         source: GSRUA26601!A11 同字异写（#64）
+      - text: 包裝种类
+        source: 当纳利出口发票!G10 繁体（#66）
 
   - id: pack_no
     value:
@@ -203,6 +220,8 @@ box:
     aliases:
       - text: 件数
         source: 恒信草单 一般贸易出口!D11
+      - text: 件    数
+        source: 当纳利出口发票!G9 键内多空格；词表匹配已去空白（#66）
 
   - id: gross_wt
     value:
@@ -218,6 +237,8 @@ box:
         source: 多科报关单!I11「毛重\n（公斤）」。词表匹配已去空白（#64）
       - text: 毛重(公斤)
         source: 半角括号变体（#64）
+      - text: 毛    重
+        source: 当纳利出口发票!G7 键内多空格；词表匹配已去空白（#66）
 
   - id: net_wt
     value:
@@ -233,6 +254,8 @@ box:
         source: 多科报关单!K11「净重\n（公斤）」（#64）
       - text: 净重(公斤)
         source: 半角括号变体（#64）
+      - text: 淨    重
+        source: 当纳利出口发票!G8 繁体+多空格；fields.yaml netWt 同步（#66）
 
   - id: trans_mode
     aliases:
@@ -291,6 +314,8 @@ box:
     aliases:
       - text: 申报地海关
         source: "#12 customMaster。恒信 G2 只有「（深惠州关）」，无此标签"
+      - text: 申报海关
+        source: 通达2 扁平表头列名；fields.yaml customMaster 同步（#66）
 
 kv:
   - id: invoice_no
