@@ -87,6 +87,9 @@ Sheet.tables + consume
 | 明确毛重 / G.W. / 总毛重 | `customGrossWet` |
 | 未区分的重量 | `customNetWt`；没有毛重列则 `customGrossWet` 空着 |
 | 法定第一数量 | 才进 `qty1` |
+| 成交数量（#75） | 单位在 `weight_units` 且同行有净重 → `gqty` 取净重（数量PCS / 件数不进成交数量）。没有净重则数量列原值。没有数量列不编 |
+
+同表改写在跨表补空之后、出门之前。补空本身仍用改写前的件数，件数过不了净重闸（#56）。已与净重一致则不改证据。
 
 表头整单件毛净交 #19。箱数不加商品字段。
 
@@ -127,6 +130,7 @@ Sheet.tables + consume
 | 某列不要从副表抄（默认无） | `goods_master.skip_fill` | 否 |
 | 哪些列要过数量闸（数量链） | `goods_master.gated_fields` | 否 |
 | 千克行数量补值须≈净重、毛重补值须≥净重 | 内置规则，容差同 `qty_*` | 否 |
+| 千克行同表成交数量取净重（#75） | 内置规则；千克词表仍是 `weight_units` | 否 |
 | 新合计叫法（如 GRAND TOTAL） | `goods_master.total_row_tokens` | 否 |
 | 续行落在其它已占字段且非申报要素形状 | `goods_map.py` `_route_leftovers` 补形状判定 | 是，通用规则 |
 | 三行以上叠列（四行一项） | 续行判定天然支持，验收补样本 | 否 |

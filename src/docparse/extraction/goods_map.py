@@ -23,7 +23,7 @@ def map_document_goods(
     schema = schema or load_schema()
     mapped: list[tuple[Sheet, list[GoodsItem], int]] = []
     for sheet in document.sheets:
-        items = map_sheet_goods(sheet, document, schema)
+        items = _map_sheet_goods(sheet, document, schema)
         if not items:
             continue
         mapped.append((sheet, items, items[0].master_score))
@@ -41,6 +41,8 @@ def map_document_goods(
             if sheet is master_sheet:
                 continue
             _merge_by_order(merged, items, schema)
+    for item in merged:
+        _prefer_net_as_qty(item, schema)
     return merged
 
 
@@ -50,6 +52,17 @@ def map_sheet_goods(
     schema: Schema | None = None,
 ) -> list[GoodsItem]:
     schema = schema or load_schema()
+    items = _map_sheet_goods(sheet, document, schema)
+    for item in items:
+        _prefer_net_as_qty(item, schema)
+    return items
+
+
+def _map_sheet_goods(
+    sheet: Sheet,
+    document: DocumentIR,
+    schema: Schema,
+) -> list[GoodsItem]:
     if sheet.consume in _SKIP_CONSUME:
         return []
     table = _best_table(sheet, schema)
@@ -424,6 +437,26 @@ def _close(left: float, right: float, schema: Schema) -> bool:
     delta = abs(left - right)
     scale = max(abs(left), abs(right), 1.0)
     return delta <= policy.qty_abs_tol or delta <= policy.qty_rel_tol * scale
+
+
+def _prefer_net_as_qty(item: GoodsItem, schema: Schema) -> None:
+    """千克行同时有数量和净重时，成交数量取净重。件数列（数量PCS）不进 gqty。
+
+    已与净重一致则不改证据。没有数量列不编；没有净重则保持原 gqty
+    （当纳利：数量列本身就是千克）。
+    """
+    if not _is_weight_unit(item.value_of("gunit"), schema):
+        return
+    if item.value_of("gqty") is None:
+        return
+    net_field = item.fields.get("customNetWt")
+    net = _as_number(item.value_of("customNetWt"))
+    if net_field is None or net is None:
+        return
+    current = _as_number(item.value_of("gqty"))
+    if current is not None and _close(net, current, schema):
+        return
+    item.fields["gqty"] = _retarget(net_field, "gqty", "成交数量")
 
 
 def _qty_of(item: GoodsItem, schema: Schema | None = None) -> float | None:

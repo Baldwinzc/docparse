@@ -22,6 +22,7 @@ REAL_GSRUA = _SUPPLY / "GSRUA26601CLLG01(1).xlsx"
 REAL_DONNELLEY = _SUPPLY / "202606 R26JU551-Y报关一般.xls"
 REAL_MXY = _SUPPLY / "MXY2026-0616 东莞-越南物料 一般出口报关资料 UPS 更新.xlsx"
 REAL_DUOKE = _SUPPLY / "6-17 多科报关资料香港出货 DKTX-2606057 多科通讯乐乐高(1).xls"
+REAL_BLU_IN = _SUPPLY / "进料加工出口报关单-BLU-HDX260271(1).xlsx"
 
 
 def _thin() -> Border:
@@ -377,6 +378,64 @@ def test_kg_row_fills_qty_only_when_close_to_net() -> None:
     assert item.fields["gqty"].evidence[0].cell.startswith("发票!")
     assert item.value_of("customGrossWet") == "7.35"
     assert item.fields["customGrossWet"].evidence[0].cell.startswith("装箱单!")
+
+
+def test_kg_row_same_table_qty_takes_net_not_pcs() -> None:
+    """同行同时有重量、数量PCS、计价单位=千克：成交数量取净重。"""
+
+    def kg_pcs_draft(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = 5000
+        sheet["F18"] = "千克"
+        sheet["G18"] = 205
+        sheet["H18"] = 3810
+        sheet["I18"] = 781050
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": kg_pcs_draft}),
+        file_id="kgpcs",
+        filename="kg-pcs.xlsx",
+    )
+    items = map_document_goods(document)
+    item = items[0]
+    assert item.value_of("gunit") == "千克"
+    assert item.value_of("customNetWt") == "205"
+    assert item.value_of("gqty") == "205"
+    assert "重量KG" in (item.fields["gqty"].evidence[0].quote or "")
+    assert item.value_of("declPrice") == "3810"
+    assert item.value_of("declTotal") == "781050"
+
+
+def test_piece_unit_keeps_pcs_qty() -> None:
+    document = parse_excel(
+        _workbook({"一般贸易出口": _draft}),
+        file_id="pcs",
+        filename="pcs.xlsx",
+    )
+    item = map_document_goods(document)[0]
+    assert item.value_of("gunit") == "只"
+    assert item.value_of("gqty") == "150"
+    assert item.value_of("customNetWt") == "5.74"
+
+
+def test_kg_row_without_net_keeps_qty() -> None:
+    def kg_qty_only(sheet) -> None:
+        _draft(sheet)
+        sheet["E18"] = 17432
+        sheet["F18"] = "千克"
+        sheet["G18"] = None
+        sheet["H18"] = 33.9028
+        sheet["I18"] = 590993
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": kg_qty_only}),
+        file_id="kgonly",
+        filename="kg-qty-only.xlsx",
+    )
+    item = map_document_goods(document)[0]
+    assert item.value_of("gunit") == "千克"
+    assert item.value_of("gqty") == "17432"
+    assert item.value_of("customNetWt") is None
 
 
 def test_invoice_qty_fills_when_price_implies_same_qty() -> None:
@@ -832,6 +891,35 @@ def test_donnelley_sample_merges_three_row_item() -> None:
     assert values["destinationCountry"] == "美国"
     assert values["districtCode"] == "(44199/)东莞/"
     assert values["dutyMode"] == "照章征税"
+
+
+@pytest.mark.skipif(not REAL_BLU_IN.exists(), reason="本地进料 BLU 样本不在 CI")
+def test_blu_in_kg_qty_takes_net_not_pcs() -> None:
+    document = parse_excel(
+        REAL_BLU_IN.read_bytes(),
+        file_id="blu-in",
+        filename=REAL_BLU_IN.name,
+    )
+    items = map_document_goods(document)
+    assert len(items) == 49
+    first = items[0]
+    assert first.value_of("gunit") == "千克"
+    assert first.value_of("customNetWt") == "205"
+    assert first.value_of("gqty") == "205"
+    assert first.value_of("declPrice") == "3810"
+    assert first.value_of("declTotal") == "781050"
+    for item in items:
+        assert item.value_of("gunit") == "千克"
+        net = item.value_of("customNetWt")
+        qty = item.value_of("gqty")
+        assert net and qty
+        assert qty == net
+        price = float(item.value_of("declPrice") or "0")
+        total = float(item.value_of("declTotal") or "0")
+        if price:
+            assert abs(price * float(qty) - total) <= 0.05 or abs(
+                price * float(qty) - total
+            ) <= 0.005 * max(abs(total), 1.0)
 
 
 @pytest.mark.skipif(not REAL_MXY.exists(), reason="本地 MXY 样本不在 CI")
