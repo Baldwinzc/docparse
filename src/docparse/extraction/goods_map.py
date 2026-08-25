@@ -61,9 +61,17 @@ def map_sheet_goods(
     score = _table_score(mapping, sheet.role, schema)
     items: list[GoodsItem] = []
     for row_index, row in enumerate(table.rows):
+        if _is_total_row(row, schema, sheet, table, row_index):
+            continue
         item = _map_row(row, row_index, table, mapping, sheet, document, score)
-        if item is not None:
-            items.append(item)
+        if item is None:
+            continue
+        if _is_continuation(item, items[-1] if items else None, mapping):
+            if not items:
+                continue
+            _merge_continuation(items[-1], item)
+            continue
+        items.append(item)
     return items
 
 
@@ -174,6 +182,7 @@ def _map_row(
             fields[spec.name] = field
     if not fields:
         return None
+    # 续行常只有 gname（申报要素落在品名列）；无身份列的行仍丢。
     if not any(name in fields for name in ("gno", "codeTs", "gname")):
         return None
     return GoodsItem(
@@ -223,6 +232,137 @@ def _emit(
             )
         ],
     )
+
+
+def _is_total_row(
+    row: dict[str, str],
+    schema: Schema,
+    sheet: Sheet,
+    table: Table,
+    row_index: int,
+) -> bool:
+    """行首格或整行任一格命中合计词 → 整行丢弃。不并单、不成商品。
+
+    映射列和物理行都扫：MXY 装箱单「合计」落在无表头的中间列，不进 row dict。
+    """
+    tokens = [_fold_token(token) for token in schema.goods_master.total_row_tokens]
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return False
+    texts = [str(value) for value in row.values()]
+    excel_row = _excel_row(table, row_index)
+    if excel_row is not None:
+        texts.extend(cell.value for cell in sheet.cells if cell.row == excel_row)
+    return any(_text_has_total(text, tokens) for text in texts)
+
+
+def _excel_row(table: Table, row_index: int) -> int | None:
+    if not table.header_rows:
+        return None
+    return table.header_rows[-1] + 1 + row_index
+
+
+def _fold_token(text: str | None) -> str:
+    return fold_key(text or "").rstrip("：:").strip()
+
+
+def _text_has_total(text: str | None, tokens: list[str]) -> bool:
+    folded = _fold_token(text)
+    if not folded:
+        return False
+    for token in tokens:
+        if not token:
+            continue
+        if token.isascii():
+            pattern = r"(?<![a-z0-9])" + re.escape(token) + r"(?![a-z0-9])"
+            if re.search(pattern, folded):
+                return True
+        elif token in folded:
+            return True
+    return False
+
+
+def _is_continuation(
+    item: GoodsItem,
+    previous: GoodsItem | None,
+    mapping: dict[str, FieldSpec],
+) -> bool:
+    """无可用税号，且项号空 / 0 / 与上一件相同 → 并入上一件。
+
+    只对有项号列的海关货表生效。箱单 / 发票没有项号，相邻两行都是独立商品，
+    不能因「无 gno」互并。无主行的续行也算续行，调用方丢弃。
+
+    项号空 / 0 才是续行。字母项号（恒信箱单 D001）是身份，不并。
+    """
+    if not any(spec.name == "gno" for spec in mapping.values()):
+        return False
+    if _usable_hs(item.value_of("codeTs")):
+        return False
+    raw_gno = item.value_of("gno")
+    if not raw_gno:
+        return True
+    gno = _item_no(raw_gno)
+    if gno == 0:
+        return True
+    if previous is None or gno is None:
+        return False
+    prev = _item_no(previous.value_of("gno"))
+    return prev is not None and gno == prev
+
+
+def _usable_hs(text: str | None) -> bool:
+    raw = (text or "").strip()
+    return bool(raw) and _LEADING_HS.match(raw) is not None
+
+
+def _item_no(text: str | None) -> int | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    try:
+        number = float(raw.replace(",", ""))
+    except ValueError:
+        return None
+    if not number.is_integer():
+        return None
+    return int(number)
+
+
+def _merge_continuation(master: GoodsItem, other: GoodsItem) -> None:
+    """同名字段主行空位补、已占用不覆盖；叠列溢出按形状改落到空字段。"""
+    leftovers: list[ExtractedField] = []
+    for name, field in other.fields.items():
+        if not master.value_of(name):
+            master.fields[name] = deepcopy(field)
+        else:
+            leftovers.append(field)
+    _route_leftovers(master, leftovers)
+    master.review_reasons = _row_reasons(master.fields)
+
+
+def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None:
+    """已占字段上的续行值：申报要素形状补 gmodel；叠列数字补总价、非数字补币制/单位。"""
+    for field in leftovers:
+        text = (field.value or "").strip()
+        if not text:
+            continue
+        if text.count("|") >= 2 and not master.value_of("gmodel"):
+            master.fields["gmodel"] = _retarget(field, "gmodel", "规格型号")
+            continue
+        if field.name == "declPrice":
+            if _as_number(text) is not None and not master.value_of("declTotal"):
+                master.fields["declTotal"] = _retarget(field, "declTotal", "申报总价")
+            elif _as_number(text) is None and not master.value_of("tradeCurr"):
+                master.fields["tradeCurr"] = _retarget(field, "tradeCurr", "币制")
+        elif field.name == "gqty" and _as_number(text) is None and not master.value_of("gunit"):
+            master.fields["gunit"] = _retarget(field, "gunit", "成交单位")
+
+
+def _retarget(field: ExtractedField, name: str, display_name: str) -> ExtractedField:
+    routed = deepcopy(field)
+    routed.name = name
+    routed.display_name = display_name
+    return routed
 
 
 def _merge_by_order(master_items: list[GoodsItem], others: list[GoodsItem], schema: Schema) -> None:

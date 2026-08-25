@@ -80,6 +80,10 @@ class GoodsMaster(BaseModel):
     gated_fields: list[str] = Field(
         default_factory=lambda: ["gqty", "customNetWt", "declPrice", "declTotal", "gunit"]
     )
+    # 合计行词表（#68）。新叫法加 YAML，不写公司分支。
+    total_row_tokens: list[str] = Field(
+        default_factory=lambda: ["合计", "合計", "總計", "总计", "小计", "小計", "Total", "Summary"]
+    )
 
 
 _FILL_MODES = frozenset({"overwrite", "fill", "ignore"})
