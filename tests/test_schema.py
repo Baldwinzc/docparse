@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from docparse.schema.loader import load_layout_vocab, load_schema, load_sheet_roles
+from docparse.schema.textnorm import fold_key
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -188,6 +189,8 @@ def test_goods_map_flags_and_master_signals() -> None:
     assert schema.goods_master.role_bonus["draft"] > schema.goods_master.role_bonus["packing"]
     bonus = schema.goods_master.role_bonus
     assert bonus["declaration_list"] == bonus["draft"]
+    tokens = {fold_key(token) for token in schema.goods_master.total_row_tokens}
+    assert {"合计", "total", "summary"} <= tokens
 
 
 def test_assembly_policy_is_role_based() -> None:

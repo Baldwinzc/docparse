@@ -15,6 +15,9 @@ goods_master:
   skip_fill: []
   gated_fields: [gqty, customNetWt, declPrice, declTotal, gunit]
   match_keys: [gno, codeTs, gname, gqty]
+  # 合计行词表（#68）。任一带这些词的格子整行丢弃，不并单、不成商品。
+  # 新叫法（如 GRAND TOTAL）加这里，不写公司分支。
+  total_row_tokens: [合计, 合計, 總計, 总计, 小计, 小計, Total, Summary]
   role_bonus:
     draft: 10
     declaration_list: 10

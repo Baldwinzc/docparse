@@ -15,8 +15,13 @@ from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
 from docparse.schema.loader import load_schema
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
+_SUPPLY = Path("/Users/baldwin/Desktop/taizhou/补充测试")
 REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
 REAL_GUOGUANG = _DEMO / "（国光）箱单发票合同26VN0502-1.xlsx"
+REAL_GSRUA = _SUPPLY / "GSRUA26601CLLG01(1).xlsx"
+REAL_DONNELLEY = _SUPPLY / "202606 R26JU551-Y报关一般.xls"
+REAL_MXY = _SUPPLY / "MXY2026-0616 东莞-越南物料 一般出口报关资料 UPS 更新.xlsx"
+REAL_DUOKE = _SUPPLY / "6-17 多科报关资料香港出货 DKTX-2606057 多科通讯乐乐高(1).xls"
 
 
 def _thin() -> Border:
@@ -572,3 +577,283 @@ def test_guoguang_sample_goods() -> None:
     assert values["declPrice"] == "0.0181"
     assert all(item.source_kind == "primary" for item in items)
     assert all(field.evidence for field in first.fields.values())
+
+
+def _continuation_two_row(sheet) -> None:
+    """两行一项：行 2 只有申报要素，落在品名列。"""
+    sheet["A1"] = "中华人民共和国海关出口货物报关单"
+    headers = [
+        ("A3", "项号"),
+        ("B3", "商品编号"),
+        ("C3", "商品名称及规格型号"),
+        ("D3", "数量"),
+        ("E3", "单位"),
+        ("F3", "单价"),
+        ("G3", "总价"),
+        ("H3", "币制"),
+    ]
+    for address, text in headers:
+        sheet[address] = text
+    sheet["A4"] = 1
+    sheet["B4"] = "8708100000"
+    sheet["C4"] = "前保险杠下部装饰板"
+    sheet["D4"] = 1
+    sheet["E4"] = "个"
+    sheet["F4"] = 86.03
+    sheet["G4"] = 86.03
+    sheet["H4"] = "CNY"
+    sheet["C5"] = "境内自主品牌|不享惠|吉利EC7 1.5L/1.8L等小轿车通用|吉利牌|零部件编号6010182800"
+    sheet["A6"] = 2
+    sheet["B6"] = "8708999900"
+    sheet["C6"] = "喷水壶带洗涤电机总成"
+    sheet["D6"] = 10
+    sheet["E6"] = "个"
+    sheet["F6"] = 89.35
+    sheet["G6"] = 893.5
+    sheet["H6"] = "CNY"
+    sheet["C7"] = "境内自主品牌|不享惠|吉利EC7 1.5L/1.8L等小轿车通用|吉利牌|零部件编号6608056397"
+    for row in sheet.iter_rows(min_row=1, max_row=7, min_col=1, max_col=8):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _continuation_three_row(sheet) -> None:
+    """三行一项：单价/总价/币制竖排，数量及单位竖排两行。"""
+    sheet["A1"] = "中华人民共和国海关出口货物报关单"
+    headers = [
+        ("A3", "项号"),
+        ("B3", "商品编号"),
+        ("C3", "商品名称及规格型号"),
+        ("D3", "数量及单位"),
+        ("E3", "单价/总价/币制"),
+        ("F3", "原产国"),
+        ("G3", "最终目的国"),
+        ("H3", "境内货源地"),
+        ("I3", "征免"),
+    ]
+    for address, text in headers:
+        sheet[address] = text
+    sheet["A4"] = 1
+    sheet["B4"] = "4901990000"
+    sheet["C4"] = "外文书籍"
+    sheet["D4"] = 17432
+    sheet["E4"] = 33.9028
+    sheet["F4"] = "中国"
+    sheet["G4"] = "美国"
+    sheet["H4"] = "(44199/)东莞/"
+    sheet["I4"] = "照章征税"
+    sheet["C5"] = "0|0|其他书籍|成册|||无品牌"
+    sheet["D5"] = 0
+    sheet["E5"] = 590993
+    sheet["F5"] = "(CHN)"
+    sheet["G5"] = "(USA)"
+    sheet["I5"] = "(1)"
+    sheet["A6"] = 0
+    sheet["D6"] = "千克"
+    sheet["E6"] = "人民币"
+    for row in sheet.iter_rows(min_row=1, max_row=6, min_col=1, max_col=9):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _total_row_draft(sheet) -> None:
+    """主行后跟合计行：合计不能成商品，也不能并进最后一项。"""
+    _draft(sheet)
+    sheet["A19"] = "合计："
+    sheet["E19"] = 150
+    sheet["G19"] = 5.74
+    sheet["I19"] = 14700
+    for row in sheet.iter_rows(min_row=19, max_row=19, min_col=1, max_col=13):
+        for cell in row:
+            cell.border = _thin()
+
+
+def test_two_row_item_merges_declaration_element() -> None:
+    document = parse_excel(
+        _workbook({"一般贸易出口": _continuation_two_row}),
+        file_id="two",
+        filename="two-row.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 2
+    first = _values(items[0])
+    assert first["gno"] == "1"
+    assert first["codeTs"] == "8708100000"
+    assert first["gname"] == "前保险杠下部装饰板"
+    assert first["gmodel"] == (
+        "境内自主品牌|不享惠|吉利EC7 1.5L/1.8L等小轿车通用|吉利牌|零部件编号6010182800"
+    )
+    assert first["gqty"] == "1"
+    second = _values(items[1])
+    assert second["gno"] == "2"
+    assert second["gname"] == "喷水壶带洗涤电机总成"
+    assert "零部件编号6608056397" in (second["gmodel"] or "")
+    assert all("|" in (item.value_of("gmodel") or "") for item in items)
+
+
+def test_three_row_item_fills_stacked_price_and_unit() -> None:
+    document = parse_excel(
+        _workbook({"报关预录入单": _continuation_three_row}),
+        file_id="three",
+        filename="three-row.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["codeTs"] == "4901990000"
+    assert values["gname"] == "外文书籍"
+    assert values["gqty"] == "17432"
+    assert values["gunit"] == "千克"
+    assert values["declPrice"] == "33.9028"
+    assert values["declTotal"] == "590993"
+    assert values["tradeCurr"] == "人民币"
+    assert values["gmodel"] == "0|0|其他书籍|成册|||无品牌"
+    assert values["cusOriginCountry"] == "中国"
+    assert values["destinationCountry"] == "美国"
+    assert values["districtCode"] == "(44199/)东莞/"
+    assert values["dutyMode"] == "照章征税"
+    assert items[0].value_of("gno") == "1"
+
+
+def test_total_row_is_dropped_not_merged() -> None:
+    document = parse_excel(
+        _workbook({"一般贸易出口": _total_row_draft}),
+        file_id="tot",
+        filename="total-row.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["gno"] == "1"
+    assert values["gname"] == "表壳配件/壳体"
+    assert values["gqty"] == "150"
+    assert values["declTotal"] == "14700"
+    assert all("合计" not in (item.value_of("gno") or "") for item in items)
+    assert all("合计" not in (item.value_of("gname") or "") for item in items)
+
+
+def test_total_label_outside_mapped_column_is_still_dropped() -> None:
+    """合计落在无表头中间列（MXY 装箱单），物理行扫描也要拦住。"""
+
+    def packing_total(sheet) -> None:
+        sheet["A1"] = "PACKING LIST"
+        sheet["A3"] = "序号"
+        sheet["B3"] = "DESCRIPTION"
+        sheet["D3"] = "Ship Q'ty (数量/PCS)"
+        sheet["E3"] = "N.W. (Kg) (净重)"
+        sheet["F3"] = "G.W .(Kg) (毛重)"
+        sheet["A4"] = 1
+        sheet["B4"] = "UPS电源系统"
+        sheet["D4"] = 1
+        sheet["E4"] = 733
+        sheet["F4"] = 813
+        sheet["C5"] = "合计"
+        sheet["D5"] = 1
+        sheet["E5"] = 733
+        sheet["F5"] = 813
+        for row in sheet.iter_rows(min_row=1, max_row=5, min_col=1, max_col=6):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"装箱单": packing_total}),
+        file_id="ptot",
+        filename="packing-total.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    assert items[0].value_of("gname") == "UPS电源系统"
+    assert items[0].value_of("customGrossWet") == "813"
+
+
+def test_orphan_continuation_without_master_is_dropped() -> None:
+    def orphan(sheet) -> None:
+        sheet["A1"] = "中华人民共和国海关出口货物报关单"
+        sheet["A3"] = "项号"
+        sheet["B3"] = "商品编号"
+        sheet["C3"] = "商品名称及规格型号"
+        sheet["C4"] = "境内自主品牌|不享惠|吉利EC7|吉利牌|零部件"
+        sheet["A5"] = 1
+        sheet["B5"] = "8708100000"
+        sheet["C5"] = "前保险杠"
+        for row in sheet.iter_rows(min_row=1, max_row=5, min_col=1, max_col=3):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": orphan}),
+        file_id="orphan",
+        filename="orphan.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    assert items[0].value_of("gname") == "前保险杠"
+    assert items[0].value_of("gmodel") is None
+
+
+@pytest.mark.skipif(not REAL_GSRUA.exists(), reason="本地 GSRUA 样本不在 CI")
+def test_gsrua_sample_merges_two_row_items() -> None:
+    document = parse_excel(
+        REAL_GSRUA.read_bytes(),
+        file_id="gsrua",
+        filename=REAL_GSRUA.name,
+    )
+    items = map_document_goods(document)
+    assert len(items) == 50
+    assert all(item.value_of("codeTs") for item in items)
+    assert all((item.value_of("gmodel") or "").count("|") >= 2 for item in items)
+    first = _values(items[0])
+    assert first["gno"] == "1"
+    assert first["codeTs"] == "8708100000"
+    assert first["gname"] == "前保险杠下部装饰板"
+    assert first["gmodel"].startswith("境内自主品牌|不享惠|吉利EC7")
+    assert all("合计" not in (item.value_of("gno") or "") for item in items)
+
+
+@pytest.mark.skipif(not REAL_DONNELLEY.exists(), reason="本地当纳利样本不在 CI")
+def test_donnelley_sample_merges_three_row_item() -> None:
+    document = parse_excel(
+        REAL_DONNELLEY.read_bytes(),
+        file_id="dnn",
+        filename=REAL_DONNELLEY.name,
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["codeTs"] == "4901990000"
+    assert values["gname"] == "外文书籍"
+    assert values["gqty"] == "17432"
+    assert values["gunit"] == "千克"
+    assert values["declPrice"] == "33.9028"
+    assert values["declTotal"] == "590993"
+    assert values["tradeCurr"] == "人民币"
+    assert values["gmodel"] == "0|0|其他书籍|成册|||无品牌"
+    assert values["cusOriginCountry"] == "中国"
+    assert values["destinationCountry"] == "美国"
+    assert values["districtCode"] == "(44199/)东莞/"
+    assert values["dutyMode"] == "照章征税"
+
+
+@pytest.mark.skipif(not REAL_MXY.exists(), reason="本地 MXY 样本不在 CI")
+def test_mxy_sample_drops_total_and_keeps_seven() -> None:
+    document = parse_excel(
+        REAL_MXY.read_bytes(),
+        file_id="mxy",
+        filename=REAL_MXY.name,
+    )
+    items = map_document_goods(document)
+    assert len(items) == 7
+    assert [item.value_of("gno") for item in items] == [str(i) for i in range(1, 8)]
+    assert all("合计" not in (item.value_of("gname") or "") for item in items)
+
+
+@pytest.mark.skipif(not REAL_DUOKE.exists(), reason="本地多科样本不在 CI")
+def test_duoke_sample_keeps_four_items() -> None:
+    document = parse_excel(
+        REAL_DUOKE.read_bytes(),
+        file_id="dk",
+        filename=REAL_DUOKE.name,
+    )
+    items = map_document_goods(document)
+    assert len(items) == 4
+    assert [item.value_of("gno") for item in items] == ["1", "2", "3", "4"]
