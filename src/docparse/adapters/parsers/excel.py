@@ -9,6 +9,8 @@ from docparse.domain.ir import Cell, CellBorder, DocumentIR, Sheet
 from docparse.extraction.sheet_role import classify_sheets
 
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_XLS = "application/vnd.ms-excel"
+_OLE2_MAGIC = b"\xd0\xcf\x11\xe0"
 _SHEET_REF = re.compile(
     r"^=(?:'([^']+)'|([^'!]+))!(\$?[A-Z]{1,3}\$?\d+)$",
     re.IGNORECASE,
@@ -22,6 +24,87 @@ _MUL_REF = re.compile(
 def parse_excel(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
     if filename.lower().endswith(".csv"):
         return _parse_csv(data, file_id=file_id, filename=filename)
+    if data.startswith(_OLE2_MAGIC):
+        return _parse_xls(data, file_id=file_id, filename=filename)
+    return _parse_xlsx(data, file_id=file_id, filename=filename)
+
+
+def _parse_xls(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
+    try:
+        import xlrd
+    except ImportError:
+        return DocumentIR(
+            document_id=uuid4().hex,
+            file_id=file_id,
+            filename=filename,
+            media_type=_XLS,
+            warnings=["未安装 xlrd，.xls 仅登记未解析。pip install 'docparse[excel]'"],
+        )
+
+    book = xlrd.open_workbook(file_contents=data, formatting_info=True)
+    parsed = [_read_xls_sheet(book, sheet) for sheet in book.sheets()]
+    return _finish_document(parsed, file_id=file_id, filename=filename, media_type=_XLS)
+
+
+def _read_xls_sheet(book, raw_sheet) -> Sheet:
+    merges = _xls_merge_origins(raw_sheet)
+    covered = _xls_covered_cells(raw_sheet)
+    cells: list[Cell] = []
+    for row_idx in range(raw_sheet.nrows):
+        for col_idx in range(raw_sheet.ncols):
+            address = f"{_col_letter(col_idx + 1)}{row_idx + 1}"
+            if address in covered and address not in merges:
+                continue
+            item = raw_sheet.cell(row_idx, col_idx)
+            display = _xls_value(book, item)
+            if not display and address not in merges:
+                continue
+            cells.append(
+                Cell(
+                    address=address,
+                    value=display,
+                    raw_value=display or None,
+                    row=row_idx + 1,
+                    column=col_idx + 1,
+                    merge_range=merges.get(address),
+                    border=None,
+                )
+            )
+    return Sheet(name=raw_sheet.name, cells=cells)
+
+
+def _xls_value(book, item) -> str:
+    import xlrd
+
+    if item.ctype == xlrd.XL_CELL_ERROR:
+        return ""
+    if item.ctype == xlrd.XL_CELL_DATE:
+        try:
+            return _stringify(xlrd.xldate_as_datetime(item.value, book.datemode))
+        except (ValueError, OverflowError):
+            return _stringify(item.value)
+    return _stringify(item.value)
+
+
+def _xls_merge_origins(sheet) -> dict[str, str]:
+    origins: dict[str, str] = {}
+    for rlo, rhi, clo, chi in sheet.merged_cells:
+        start = f"{_col_letter(clo + 1)}{rlo + 1}"
+        end = f"{_col_letter(chi)}{rhi}"
+        origins[start] = f"{start}:{end}"
+    return origins
+
+
+def _xls_covered_cells(sheet) -> set[str]:
+    covered: set[str] = set()
+    for rlo, rhi, clo, chi in sheet.merged_cells:
+        for row in range(rlo, rhi):
+            for col in range(clo, chi):
+                covered.add(f"{_col_letter(col + 1)}{row + 1}")
+    return covered
+
+
+def _parse_xlsx(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
     try:
         from openpyxl import load_workbook
     except ImportError:
@@ -49,13 +132,22 @@ def parse_excel(data: bytes, *, file_id: str, filename: str) -> DocumentIR:
         pending.extend((sheet.name, cell) for cell in formulas)
 
     _resolve_formulas(grids, pending)
+    return _finish_document(parsed, file_id=file_id, filename=filename, media_type=_XLSX)
 
+
+def _finish_document(
+    parsed: list[Sheet],
+    *,
+    file_id: str,
+    filename: str,
+    media_type: str,
+) -> DocumentIR:
     sheets = [split_sheet(sheet) for sheet in parsed]
     document = DocumentIR(
         document_id=uuid4().hex,
         file_id=file_id,
         filename=filename,
-        media_type=_XLSX,
+        media_type=media_type,
         sheets=sheets,
         raw_text="",
     )

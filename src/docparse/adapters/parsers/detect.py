@@ -15,11 +15,14 @@ _PDF_EXTS = {".pdf"}
 _EXCEL_EXTS = {".xlsx", ".xls", ".csv"}
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 _TEXT_EXTS = {".txt", ".md", ".csv"}
+_OLE2_MAGIC = b"\xd0\xcf\x11\xe0"
 
 
 def detect_kind(filename: str, data: bytes) -> SourceKind:
     name = filename.lower()
     if data.startswith(b"PK") and name.endswith(".xlsx"):
+        return SourceKind.EXCEL
+    if data.startswith(_OLE2_MAGIC) and name.endswith(".xls"):
         return SourceKind.EXCEL
     if data.startswith(b"PK"):
         return SourceKind.ZIP
