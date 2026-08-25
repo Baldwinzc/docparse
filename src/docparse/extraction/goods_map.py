@@ -67,6 +67,11 @@ def map_sheet_goods(
     return items
 
 
+def best_goods_table(sheet: Sheet, schema: Schema) -> Table | None:
+    """该 sheet 的最佳商品表。head_map 表列路径（#67）复用同一张表。"""
+    return _best_table(sheet, schema)
+
+
 def _best_table(sheet: Sheet, schema: Schema) -> Table | None:
     scored: list[tuple[int, Table]] = []
     for table in sheet.tables:

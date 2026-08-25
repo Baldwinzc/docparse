@@ -451,7 +451,7 @@ head:
     sources: [customs_declaration]
     anchors: [申报地海关, 申报海关]
     code_table: 海关口岸代码
-    notes: 四位关区。见 port_mapping。草单不一定有独立格。申报海关为通达2 叫法（#66）。
+    notes: 四位关区。见 port_mapping。草单不一定有独立格。申报海关为通达2 叫法（#66），平表经恒定列出本字段（#67）。
 
   - name: iePort
     display_name: 进/出口口岸
@@ -607,8 +607,8 @@ head:
     layout: box_kv
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [件数]
-    notes: 恒信草单公式引用装箱单。有海关框表以框表为准，箱单补充。
+    anchors: [件数, 总件数]
+    notes: 恒信草单公式引用装箱单。有海关框表以框表为准，箱单补充。平表取「总件数」恒定列，不取每行件数（#67）。
 
   - name: grossWt
     display_name: 毛重(公斤)
@@ -616,8 +616,8 @@ head:
     layout: box_kv
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [毛重（千克）, 毛重(千克), 毛重, 毛重（公斤）, 毛重(公斤)]
-    notes: "框表优先。别名 G.W. 交 #13。只有净重时不把净重抄进本字段，见 assembly.weight。（公斤）变体来自多科（#66）。"
+    anchors: [毛重（千克）, 毛重(千克), 毛重, 毛重（公斤）, 毛重(公斤), 总毛重（千克）, 总毛重(千克)]
+    notes: "框表优先。别名 G.W. 交 #13。只有净重时不把净重抄进本字段，见 assembly.weight。（公斤）变体来自多科（#66）；总毛重为通达2 平表恒定列（#67）。"
 
   - name: netWt
     display_name: 净重(公斤)
@@ -625,8 +625,8 @@ head:
     layout: box_kv
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [净重（千克）, 净重(千克), 净重, 净重（公斤）, 净重(公斤), 淨重, 淨重（公斤）, 淨重(公斤)]
-    notes: "框表优先。别名 N.W. 交 #13。只有净重、没有毛重时视同重量，只进本字段。（公斤）变体来自多科；淨重变体来自当纳利出口发票（繁体，#66）。"
+    anchors: [净重（千克）, 净重(千克), 净重, 净重（公斤）, 净重(公斤), 淨重, 淨重（公斤）, 淨重(公斤), 总净重（千克）, 总净重(千克)]
+    notes: "框表优先。别名 N.W. 交 #13。只有净重、没有毛重时视同重量，只进本字段。（公斤）变体来自多科；淨重变体来自当纳利出口发票（繁体，#66）；总净重为通达2 平表恒定列（#67）。"
 
   - name: transMode
     display_name: 成交方式
