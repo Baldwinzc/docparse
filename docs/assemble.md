@@ -29,8 +29,8 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 
 | 键 | 含义 |
 |---|---|
-| `primary_role` | 有这张角色就当草单抄。默认 `draft` |
-| `role_priority` | 多摊候选时的先后。默认 draft → packing → invoice → contract |
+| `primary_role` | 历史键，仍写入 overwrite 主源集合。`has_draft` 认所有 `fill: overwrite` 角色（draft + declaration_list） |
+| `role_priority` | 多摊候选时的先后。默认 declaration_list → draft → packing → invoice → contract |
 | `fill` | `overwrite` 覆盖 / `fill` 只补空 / `ignore` 不吃 |
 | `reconcile` | 主源已有值时，其它可消费 sheet 对一下。不一致保留主源，打 `needs_review` |
 | `customs_only` | 无草单时不从商业单据编。监管方式、征免、口岸、包装种类等 |
@@ -57,6 +57,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 |---|---|---|
 | 新叫法（装箱明细、形式发票） | `sheet_roles.yaml` / `layout_vocab.yaml` / `fields.yaml` anchors | 否 |
 | 新单据类型要参与拼单 | `sheet_roles.yaml` 加 role；`assembly.fill` / `role_priority` | 否 |
+| 扁平海关表要当主源 | `declaration_list` 已挂 `fill: overwrite` 与主货表加权 10；表头列映射交 #67 | 否 |
 | 新辅助表 | `auxiliary` + `consume: exclude` | 否 |
 | 新表头字段 | `fields.yaml` 新字段 + anchors | 否（组装器按目录收） |
 | 新字段要转 code | 字段上写 `code_table`；码表加行。展示仍是名称 | 否 |

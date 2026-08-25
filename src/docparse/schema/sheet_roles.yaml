@@ -1,8 +1,9 @@
-# sheet 角色（Issue #16）
+# sheet 角色（Issue #16 / #65）
 # 每张 sheet 一种角色。打分看标题 / 已拆 KV 键 / 表头，不看公司名。
 # 文件名只加很弱的分，不能单独定角色。
 # consume：primary 主源 / supplement 只补空 / exclude 不进下一张报关单。
 # auxiliary 与 unknown 都是 exclude：格子留在 IR，#17/#18/#19 不读。
+# declaration_list：扁平海关表（表头混表头字段 + 货列），与 draft 同权 consume=primary。
 # 新叫法加信号；新单据类型加 role。不要写 if 公司。
 
 version: 1
@@ -21,6 +22,14 @@ roles:
           source: 恒信草单 一般贸易出口!A1
         - text: 出口货物报关单
           source: 标题短写；本张恒信是全称
+        - text: 出境备案清单
+          source: GSC 出仓备案清单标题
+        - text: 报关预录入单
+          source: 当纳利草单 sheet 名
+        - text: 报关单
+          match: exact
+          weight: 1
+          source: MXY sheet 名。exact，避免打中「报关单价 / 报关型号」把对照表抬成 draft
         - text: 草单
           match: exact
           source: 常见 sheet 名。exact，避免打中长句里的「草单」
@@ -37,6 +46,46 @@ roles:
           source: 恒信草单 一般贸易出口!J3
         - text: 预录入编号
           source: 恒信草单 一般贸易出口!A2
+        - text: 运输方式
+          source: GSC 出仓备案清单 BOX
+        - text: 提运单号
+          source: GSC 出仓备案清单 BOX
+        - text: 备案号
+          source: GSC 出仓备案清单 BOX
+        - text: 许可证号
+          source: GSC 出仓备案清单 BOX
+        - text: 批准文号
+          source: 备案清单常见 BOX；本张 GSC 未拆出
+        - text: 合同协议号
+          source: 多科 / 当纳利草单 BOX
+        - text: 包装种类
+          source: GSC 出仓备案清单 BOX
+        - text: 成交方式
+          source: GSC 出仓备案清单 BOX
+        - text: 运费
+          source: 海关框表常见 BOX
+        - text: 保费
+          source: 海关框表常见 BOX
+        - text: 杂费
+          source: 海关框表常见 BOX
+        - text: 贸易国（地区）
+          source: 恒信草单 BOX 全称
+        - text: 运抵国（地区）
+          source: 恒信草单 BOX 全称
+        - text: 贸易国
+          match: exact
+          source: GSC 出仓备案清单短键
+        - text: 运抵国
+          match: exact
+          source: GSC 出仓备案清单短键
+        - text: 指运港
+          source: GSC 出仓备案清单 BOX
+        - text: 离境口岸
+          source: GSC 出仓备案清单 BOX
+        - text: 境外收货人
+          source: GSC 出仓备案清单 BOX
+        - text: 生产销售单位
+          source: 多科 / 当纳利草单 BOX
       headers:
         - text: 项号
           source: 恒信草单 一般贸易出口!A17
@@ -49,6 +98,74 @@ roles:
           source: 文件名提示，不能单独定角色
         - text: 报关单
           source: 文件名提示，不能单独定角色
+
+  - id: declaration_list
+    consume: primary
+    signals:
+      titles: []
+      keys: []
+      headers:
+        - text: 申报海关
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 账册号
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 申报计量单位
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 第一法定数量
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 总件数
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 总净重
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 总毛重
+          weight: 3
+          source: 通达2 扁平海关表头
+        - text: 备案序号
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 第二法定单位
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 申报单价
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 申报总价
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 监管方式
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 征免性质
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 成交方式
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 包装类型
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 贸易国(地区)
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 运抵国(地区)
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 指运港
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 离境口岸
+          weight: 1
+          source: 通达2 扁平海关表头
+        - text: 境内货源地
+          weight: 1
+          source: 通达2 扁平海关表头
+      filename: []
 
   - id: packing
     consume: supplement
@@ -80,6 +197,8 @@ roles:
           source: 国光总箱单!F12
         - text: Packing
           source: 恒信装箱单!G11「Packing (箱)」
+        - text: 纸箱数
+          source: 当纳利装箱单表头。标题「装箱单」只有 2 分，过不了 min_score
       filename:
         - text: 箱单
           source: 文件名提示，不能单独定角色
@@ -95,12 +214,17 @@ roles:
         - text: INVOICE
           match: exact
           source: 恒信发票!A1。整格相等，避免打中「Invoice No.」
+        - text: 出口发票
+          source: 当纳利发票 sheet 名
         - text: 发票
           match: exact
           source: 国光 / 恒信 sheet 名（国光带尾空格）。exact，避免打中「发票号」
       keys:
         - text: 发票号INVOICE NO.
           source: 国光发票!F6
+        - text: 发票号
+          match: exact
+          source: 当纳利出口发票 KV。exact，避免打中「出口发票号」台账
         - text: 运输工具 SHIPPED PER
           source: 国光发票!A11
       headers:
@@ -124,6 +248,11 @@ roles:
       titles:
         - text: SALES CONTRACT
           source: 恒信合同!C2
+        - text: 销售合同
+          source: 当纳利合同 sheet 名
+        - text: CONTRACT
+          match: exact
+          source: MXY / 多科合同页英文标题。exact，避免打中「Contract No.」
         - text: 合同
           match: exact
           source: 恒信合同!C1「合     同」；sheet 名。exact，避免打中「合同号」
@@ -134,6 +263,14 @@ roles:
         - text: 买 方
           match: exact
           source: 恒信合同!A8。exact，避免打中「买方BUYER」
+        - text: 賣方
+          source: MXY 合同繁体键
+        - text: 買方
+          source: MXY 合同繁体键
+        - text: 合約號碼
+          source: MXY 合同繁体键
+        - text: 合同號碼
+          source: 繁体合同编号常见写法
         - text: 合同号
           match: exact
           source: 恒信合同!F6（格内带冒号）。exact，避免打中「合同号CONTRACT NO.」
@@ -145,6 +282,21 @@ roles:
           source: 恒信合同!A15 英文表头行
         - text: Total Amount
           source: 恒信合同!F15
+        - text: 數量
+          weight: 1
+          source: 繁体合同表头
+        - text: 單價
+          weight: 1
+          source: 繁体合同表头
+        - text: 金額
+          weight: 1
+          source: 繁体合同表头
+        - text: Quantity
+          weight: 1
+          source: MXY 合同英文表头。弱分，发票也有单价金额靠标题拆开
+        - text: Unit Price
+          weight: 1
+          source: MXY 合同英文表头。弱分，发票也有靠标题拆开
       filename:
         - text: 合同
           source: 文件名提示，不能单独定角色

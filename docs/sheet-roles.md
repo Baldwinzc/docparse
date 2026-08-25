@@ -8,7 +8,8 @@
 
 | 角色 | consume | 谁用 | #17 / #18 / #19 |
 |---|---|---|---|
-| `draft` | `primary` | 海关草单 | 表头主源；主货表候选 |
+| `draft` | `primary` | 海关框表草单 / 出境备案清单 | 表头主源；主货表候选 |
+| `declaration_list` | `primary` | 扁平海关表（表头混表头字段 + 货列） | 与 draft 同权：主货表加权 10、overwrite；表头列映射交 #67 |
 | `packing` | `supplement` | 箱单 | 只补空；核对件毛净 |
 | `invoice` | `supplement` | 发票 | 只补空 |
 | `contract` | `supplement` | 合同 | 只补空 |
@@ -31,7 +32,11 @@
 → 否则 unknown + exclude
 ```
 
-`Sheet1` / `1` / `Sheet3` 这种通用名当空，不参与标题分。内容仍能定角色：框表标签够多就是 draft，内部编号 / 报关单号就是 auxiliary。
+`Sheet1` / `1` / `Sheet3` 这种通用名当空，不参与标题分。内容仍能定角色：框表标签够多就是 draft，扁平海关表头够多就是 `declaration_list`，内部编号 / 报关单号就是 auxiliary。
+
+`declaration_list` 只靠表头信号，不写 titles / keys。强表头（申报海关、账册号、申报计量单位、第一法定数量、总件数、总净重、总毛重）各 3 分，弱表头各 1 分。恒信框表草单仍以 draft 胜出（本角色通常 ≤6，draft ≥11）。台账（报关单号 / 报关日期 / 出口发票号）在本角色上为 0。
+
+短词容易误伤时写 `match: exact`。`报关单` 必须 exact：子串会打中「报关单价 / 报关型号」，把对照表抬成 draft。
 
 信号默认子串（去空白、大小写不敏感）。短词容易误伤时写 `match: exact`（`INVOICE` 不打中 `Invoice No.`，`合同` 不打中 `合同号`）。
 
@@ -43,7 +48,8 @@
 |---|---|---|
 | 表名乱、内容仍是箱单 / 草单 | 不用改，看内容 | 否 |
 | 新叫法（「装箱明细」「形式发票」） | `sheet_roles.yaml` 已有 role 下加信号 | 否 |
-| 新单据类型（产地证、提单 sheet） | 新 `id` + `consume` | 否（打分器已按目录走） |
+| 新单据类型（产地证、提单 sheet） | 新 `id` + `consume`；若要当主源再改 `fields.yaml` 的 `role_bonus` / `assembly` | 否（打分器已按目录走） |
+| 新的扁平海关表头 | `declaration_list.headers` | 否 |
 | 新辅助表长相对照 / 台账 | `auxiliary` 加表头或标题 | 否 |
 | 对不上 | 保持 unknown，整包复核 | 否 |
 | layout 键都没拆出来 | 先补 `layout_vocab.yaml` | 视词表 |

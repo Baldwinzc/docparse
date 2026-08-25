@@ -53,7 +53,7 @@ def assemble_declaration(
         head=head,
         goods=goods,
         review_reasons=reasons,
-        has_draft=any(sheet.role == policy.primary_role for sheet in sheets),
+        has_draft=_has_master(sheets, policy),
         source_roles=[sheet.role for sheet in sheets],
     )
 
@@ -136,13 +136,27 @@ def _ordered_sheets(document: DocumentIR, policy: Assembly) -> list[Sheet]:
     return sorted(eligible, key=lambda sheet: (rank.get(sheet.role, len(rank)), sheet.name))
 
 
+def _overwrite_roles(policy: Assembly) -> frozenset[str]:
+    """fill=overwrite 的角色当主源。draft 与 declaration_list 都在这里，不写死名字。"""
+    names = {role for role, mode in policy.fill.items() if mode == "overwrite"}
+    if policy.primary_role:
+        names.add(policy.primary_role)
+    return frozenset(names)
+
+
+def _has_master(sheets: list[Sheet], policy: Assembly) -> bool:
+    masters = _overwrite_roles(policy)
+    return any(sheet.role in masters for sheet in sheets)
+
+
 def _merge_head(
     sheets: list[Sheet],
     document: DocumentIR,
     schema: Schema,
 ) -> dict[str, ExtractedField]:
     policy = schema.assembly
-    has_draft = any(sheet.role == policy.primary_role for sheet in sheets)
+    masters = _overwrite_roles(policy)
+    has_draft = _has_master(sheets, policy)
     merged: dict[str, ExtractedField] = {}
     for sheet in sheets:
         mode = policy.fill.get(sheet.role, "fill")
@@ -151,7 +165,7 @@ def _merge_head(
         for field in map_sheet_head(sheet, document, schema):
             skip_customs = (
                 has_draft
-                and sheet.role != policy.primary_role
+                and sheet.role not in masters
                 and field.name in policy.customs_only
             )
             if skip_customs:
@@ -409,7 +423,7 @@ def _collect_reasons(
     sheets: list[Sheet],
 ) -> list[str]:
     reasons: list[str] = []
-    has_draft = any(sheet.role == schema.assembly.primary_role for sheet in sheets)
+    has_draft = _has_master(sheets, schema.assembly)
     if not has_draft:
         for name in schema.assembly.customs_only:
             field = head.get(name)

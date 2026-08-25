@@ -17,6 +17,7 @@ goods_master:
   match_keys: [gno, codeTs, gname, gqty]
   role_bonus:
     draft: 10
+    declaration_list: 10
     packing: 1
     invoice: 1
     contract: 0
@@ -47,12 +48,14 @@ goods_master:
       weight: 2
 
 # 整单组装（#19）。按角色，不按公司。有 draft 抄草单；无 draft 拼商业单据。
+# declaration_list 与 draft 同权：主货表加权 10、overwrite、排在 draft 后。
 # 新角色加 role_priority / fill；新核对字段加 reconcile；海关专用项加 customs_only。
 assembly:
   primary_role: draft
-  role_priority: [draft, packing, invoice, contract]
+  role_priority: [declaration_list, draft, packing, invoice, contract]
   fill:
     draft: overwrite
+    declaration_list: overwrite
     packing: fill
     invoice: fill
     contract: fill
