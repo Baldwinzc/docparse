@@ -13,13 +13,25 @@ python -m docparse.cli head /绝对路径/表.xlsx
 ```text
 Sheet.key_values + consume
   → 只处理 consume ≠ exclude
-  → key 对 fields.yaml head.anchors（去空白、大小写不敏感）
+  → key 对 fields.yaml head.anchors（键归一化，见下）
   → ExtractedField（值先留原文，证据 = sheet 名 + 格子）
 ```
 
 一份 xlsx 有几张合格 sheet，就调用几次，结果**并排**。草单 `packNo=40` 和箱单上的件数不会在这一层互相覆盖。谁是主、谁补空是 #19。
 
 `auxiliary` / `unknown` 的 KV 留在 IR，本层不读。
+
+## 键归一化（#66）
+
+键与锚点两侧都过 `schema/textnorm.py`，值永远不动：
+
+| 现象 | 例子 | 折成 |
+|---|---|---|
+| 去全部空白（含换行） | `毛 重` / `毛重\n（公斤）` | `毛重(公斤)` |
+| 全角括号统一半角 | `贸易国（地区）` | `贸易国(地区)` |
+| 键尾剥「（≤6 位字母数字）」码 | `贸易方式（0110）` | `贸易方式` |
+| 括号里不是字母数字不剥 | `贸易国（地区）` / `毛重（公斤）` | 保持 |
+| 繁体字**不**转换 | `淨重` | `淨重`（靠 alias 收，不做简繁映射） |
 
 ## `head_map`
 
@@ -32,6 +44,17 @@ Sheet.key_values + consume
 | `trailing_code` | 值末尾 10 位海关代码（字母数字）拆给 `split_target`，前面进本字段 |
 
 稳拆只做这一种：`tradeName` / `ownerName`。没有 10 位尾巴就整格当名称，不编造代码。
+
+## 纯代码值路由（#66）
+
+`trailing_code` 字段的值整体是码（可带括号壳）时不当名称：
+
+| 值形状 | 落点 |
+|---|---|
+| 整体 10 位海关码（GSC 经营单位 `440356K004`） | `split_target`（tradeCode / ownerCode）；name 留空标 `pure_code_value` 待复核 |
+| 整体 18 位信用代码（GSRUA `91330206MA2818T42Q`） | `scc_target`（tradeScc / ownerScc）；name 同上 |
+| `（码）`括号壳 | 剥壳按码处理 |
+| 名称+尾码（恒信 `…公司441394164D`） | 原 `trailing_code` 拆法不变 |
 
 ## 出口商业单据（不是某家公司）
 
@@ -65,6 +88,9 @@ Sheet.key_values + consume
 |---|---|---|
 | 键的叫法没见过，layout 都没拆出 | `layout_vocab.yaml` alias | 否 |
 | layout 有了，对不上报关字段 | 已有字段的 `anchors` | 否 |
+| 键带空白 / 换行 / 全角括号 / 尾码（`贸易方式（0110）`） | 已被键归一化吃掉，不用管 | 否 |
+| 新的「标签（码）」写法剥不掉 | `textnorm.py` 剥码正则 | 是，常量 |
+| 值是纯码 / 括号码，新形状 | `head_map.py` 值路由规则 | 是，通用规则 |
 | 语义是新表头字段 | `fields.yaml` 新字段 + anchors | 否（映射器按目录走） |
 | 名称+代码粘在一起 | 已有 `trailing_code` | 否 |
 | 新的稳拆规则（例如 18 位信用代码） | 新 `head_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
@@ -72,6 +98,7 @@ Sheet.key_values + consume
 | 跨表谁覆盖谁（表头） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 商品行跨表补空 | #18 / [goods-map.md](goods-map.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
+| 值本身已是合法 code（iePort=5304） | assemble 反查兜底已接受，不用管 | 否 |
 | 发票号要进报关单 | #37 先定落点 | 视目录 |
 
 不要 `if company == "恒信"`。不要在这一层 `lookup(code_tables)`。不要把 key 在 layout 里改写成 `contrNo`。

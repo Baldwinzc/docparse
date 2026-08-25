@@ -8,8 +8,8 @@ from copy import deepcopy
 from docparse.domain.fields import ExtractedField, FieldStatus, GoodsItem
 from docparse.domain.ir import DocumentIR, Evidence, Sheet, Table
 from docparse.schema.loader import FieldSpec, Schema, load_schema
+from docparse.schema.textnorm import fold_key, fold_spaced
 
-_SPACE = re.compile(r"\s+")
 _LEADING_HS = re.compile(r"^(\d{8,10})")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
@@ -55,7 +55,7 @@ def map_sheet_goods(
     table = _best_table(sheet, schema)
     if table is None:
         return []
-    mapping = _column_map(table.headers, schema)
+    mapping = _column_map(table.headers, schema, table.rows)
     if not mapping:
         return []
     score = _table_score(mapping, sheet.role, schema)
@@ -70,7 +70,7 @@ def map_sheet_goods(
 def _best_table(sheet: Sheet, schema: Schema) -> Table | None:
     scored: list[tuple[int, Table]] = []
     for table in sheet.tables:
-        mapping = _column_map(table.headers, schema)
+        mapping = _column_map(table.headers, schema, table.rows)
         if not mapping:
             continue
         scored.append((_table_score(mapping, sheet.role, schema), table))
@@ -88,29 +88,55 @@ def _table_score(mapping: dict[str, FieldSpec], role: str, schema: Schema) -> in
     return score
 
 
-def _column_map(headers: list[str], schema: Schema) -> dict[str, FieldSpec]:
-    header_best: dict[str, tuple[int, FieldSpec]] = {}
+def _column_map(
+    headers: list[str],
+    schema: Schema,
+    rows: list[dict[str, str]] | None = None,
+) -> dict[str, FieldSpec]:
+    """列 → 字段。
+
+    每列归属：按锚点在 fields.yaml 里的先后（先专后泛），再看锚点长度——
+    与数据无关，恒定规则。同一字段多列命中时才看数据形状：
+    常量列（>1 行且非空值全部相同，如通达2「总净重(千克)」全表合计）
+    降级，让行级列（净重(千克)）赢；国光「总净重 NW」每行不同，不受影响。
+    """
+    constant = _constant_headers(headers, rows or [])
+    header_best: dict[str, tuple[int, int, FieldSpec]] = {}
     for header in headers:
         if not header.strip():
             continue
-        best: tuple[int, FieldSpec] | None = None
+        best: tuple[int, int, FieldSpec] | None = None
         for spec in schema.goods:
             if not _mappable(spec):
                 continue
-            for anchor in spec.anchors:
+            for order, anchor in enumerate(spec.anchors):
                 if not _anchor_hits(anchor, header):
                     continue
-                length = len(_fold_key(anchor))
-                if best is None or length > best[0]:
-                    best = (length, spec)
+                rank = (-order, len(fold_key(anchor)))
+                if best is None or rank > (best[0], best[1]):
+                    best = (*rank, spec)
         if best is not None:
             header_best[header] = best
-    field_best: dict[str, tuple[int, str, FieldSpec]] = {}
-    for header, (length, spec) in header_best.items():
+    field_best: dict[str, tuple[int, int, int, str, FieldSpec]] = {}
+    for header, (order, length, spec) in header_best.items():
         current = field_best.get(spec.name)
-        if current is None or length > current[0]:
-            field_best[spec.name] = (length, header, spec)
-    return {header: spec for _, header, spec in field_best.values()}
+        rank = (0 if header in constant else 1, order, length)
+        if current is None or rank > (current[0], current[1], current[2]):
+            field_best[spec.name] = (*rank, header, spec)
+    return {header: spec for _, _, _, header, spec in field_best.values()}
+
+
+def _constant_headers(headers: list[str], rows: list[dict[str, str]]) -> frozenset[str]:
+    """非空值全部相同且行数 >1 的列是合计列。空值不参与判定。"""
+    constant: set[str] = set()
+    if len(rows) <= 1:
+        return frozenset(constant)
+    for header in headers:
+        values = {(row.get(header) or "").strip() for row in rows}
+        values.discard("")
+        if len(values) == 1 and values:
+            constant.add(header)
+    return frozenset(constant)
 
 
 def _mappable(spec: FieldSpec) -> bool:
@@ -220,7 +246,7 @@ def _unit_aligns(master: GoodsItem, other: GoodsItem, schema: Schema) -> bool:
     other_unit = (other.value_of("gunit") or "").strip()
     if not master_unit or not other_unit:
         return True
-    return _fold_key(master_unit) == _fold_key(other_unit)
+    return fold_key(master_unit) == fold_key(other_unit)
 
 
 def _fill_allowed(master: GoodsItem, name: str, field: ExtractedField, schema: Schema) -> bool:
@@ -277,11 +303,11 @@ def _total_over_price(item: GoodsItem) -> float | None:
 
 
 def _is_weight_unit(unit: str | None, schema: Schema | None) -> bool:
-    text = _fold_key(unit or "")
+    text = fold_key(unit or "")
     if not text:
         return False
     names = schema.goods_master.weight_units if schema is not None else []
-    return any(_fold_key(name) == text for name in names)
+    return any(fold_key(name) == text for name in names)
 
 
 def _as_number(text: str | None) -> float | None:
@@ -313,15 +339,11 @@ def _body_cell(table: Table, header: str, row_index: int) -> str | None:
 
 
 def _anchor_hits(anchor: str, header: str) -> bool:
-    needle = _fold_key(anchor)
-    text = _fold_key(header)
+    needle = fold_spaced(anchor)
+    text = fold_spaced(header)
     if not needle or not text:
         return False
     if needle.isascii() and any(char.isalpha() for char in needle):
         pattern = r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])"
         return re.search(pattern, text) is not None
-    return needle in text
-
-
-def _fold_key(text: str) -> str:
-    return _SPACE.sub(" ", text.strip()).casefold()
+    return fold_key(anchor) in fold_key(text)

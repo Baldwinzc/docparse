@@ -367,10 +367,11 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [境内发货人, 境内收发货人, 卖方SELLER, 卖方, SELLER, 卖 方]
+    anchors: [境内发货人, 境内收发货人, 卖方SELLER, 卖方, SELLER, 卖 方, 经营单位]
     head_map: trailing_code
     split_target: tradeCode
-    notes: 框表常与海关代码写在同一格，末尾 10 位拆给 tradeCode。出口商业单据卖方只补充。
+    scc_target: tradeScc
+    notes: 框表常与海关代码写在同一格，末尾 10 位拆给 tradeCode。纯代码值路由（#66）：值整体是 10 位海关码写 tradeCode、18 位信用代码写 tradeScc，name 留空标 pure_code_value。经营单位为 GSC 旧叫法。
 
   - name: tradeCode
     display_name: 10位境内收发货人海关代码
@@ -413,7 +414,8 @@ head:
     anchors: [生产销售单位, 消费使用单位]
     head_map: trailing_code
     split_target: ownerCode
-    notes: 文件里有就抽，没有就空。与代码同一格时末尾 10 位拆给 ownerCode。
+    scc_target: ownerScc
+    notes: 文件里有就抽，没有就空。与代码同一格时末尾 10 位拆给 ownerCode；纯代码值路由同 tradeName（#66）。
 
   - name: ownerCode
     display_name: 生产销售单位代码
@@ -447,9 +449,9 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [申报地海关]
+    anchors: [申报地海关, 申报海关]
     code_table: 海关口岸代码
-    notes: 四位关区。见 port_mapping。草单不一定有独立格。
+    notes: 四位关区。见 port_mapping。草单不一定有独立格。申报海关为通达2 叫法（#66）。
 
   - name: iePort
     display_name: 进/出口口岸
@@ -543,25 +545,25 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [备案号]
-    notes: 无则空。
+    anchors: [备案号, 账册号]
+    notes: 无则空。账册号为通达2 叫法（#66）。
 
   - name: contrNo
     display_name: 合同协议号
     group: head
     layout: box_kv
     sources: [customs_declaration, contract]
-    anchors: [合同协议号, 合同号, Contract No, CONTRACT NO., 合同号CONTRACT NO.]
-    notes: 框表优先；合同 / 箱单只补充。多 sheet 不在本层合并。
+    anchors: [合同协议号, 合同号, Contract No, CONTRACT NO., 合同号CONTRACT NO., 合約號碼]
+    notes: 框表优先；合同 / 箱单只补充。多 sheet 不在本层合并。合約號碼为 MXY 合同繁体（#66）。
 
   - name: supvModeCdde
     display_name: 监管方式/贸易方式
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [监管方式, 贸易方式]
+    anchors: [监管方式, 贸易方式, 貿易方式]
     code_table: 监管方式
-    notes: 字段名按 json 原样（Cdde）。恒信草单 G7 标签错写成「监管方式」的版面问题不在本 Issue。
+    notes: 字段名按 json 原样（Cdde）。恒信草单 G7 标签错写成「监管方式」的版面问题不在本 Issue。貿易方式为当纳利出口发票繁体（#66）。
 
   - name: cutMode
     display_name: 征免性质
@@ -595,9 +597,9 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [包装种类]
+    anchors: [包装种类, 包装类型, 包裝种类]
     code_table: 包装种类
-    notes: 名称转码交 #14。
+    notes: 名称转码交 #14。包装类型为 GSRUA 叫法（#64）；包裝种类为当纳利出口发票繁体（#66）。
 
   - name: packNo
     display_name: 件数
@@ -614,8 +616,8 @@ head:
     layout: box_kv
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [毛重（千克）, 毛重(千克), 毛重]
-    notes: "框表优先。别名 G.W. 交 #13。只有净重时不把净重抄进本字段，见 assembly.weight。"
+    anchors: [毛重（千克）, 毛重(千克), 毛重, 毛重（公斤）, 毛重(公斤)]
+    notes: "框表优先。别名 G.W. 交 #13。只有净重时不把净重抄进本字段，见 assembly.weight。（公斤）变体来自多科（#66）。"
 
   - name: netWt
     display_name: 净重(公斤)
@@ -623,8 +625,8 @@ head:
     layout: box_kv
     value_type: number
     sources: [customs_declaration, packing_list]
-    anchors: [净重（千克）, 净重(千克), 净重]
-    notes: "框表优先。别名 N.W. 交 #13。只有净重、没有毛重时视同重量，只进本字段。"
+    anchors: [净重（千克）, 净重(千克), 净重, 净重（公斤）, 净重(公斤), 淨重, 淨重（公斤）, 淨重(公斤)]
+    notes: "框表优先。别名 N.W. 交 #13。只有净重、没有毛重时视同重量，只进本字段。（公斤）变体来自多科；淨重变体来自当纳利出口发票（繁体，#66）。"
 
   - name: transMode
     display_name: 成交方式
@@ -769,8 +771,8 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration]
-    anchors: [项号, Item]
-    notes: 商品表列。有海关商品表以它为主。不要编造项号。
+    anchors: [项号, Item, 序号]
+    notes: 商品表列。有海关商品表以它为主。不要编造项号。序号为通达2 / 当纳利出口发票叫法（#66）。
 
   - name: codeTs
     display_name: 商品编号(T+S)
@@ -812,8 +814,8 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, invoice]
-    anchors: [单价, Unit Price]
-    notes: 海关商品表优先，发票补充。
+    anchors: [单价, Unit Price, 申报单价]
+    notes: 海关商品表优先，发票补充。申报单价为通达2 叫法（#66）。
 
   - name: declTotal
     display_name: 申报总价
@@ -821,8 +823,8 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, invoice]
-    anchors: [总价, 汇总价, 总值, Amount]
-    notes: 海关商品表优先。可能是公式。
+    anchors: [总价, 汇总价, 总值, Amount, 申报总价, 金额]
+    notes: 海关商品表优先。可能是公式。申报总价为通达2 叫法；金额为 GSC 叫法（#66）。
 
   - name: tradeCurr
     display_name: 币制
@@ -839,17 +841,17 @@ goods:
     layout: table_col
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
-    anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty]
-    notes: 海关商品表优先。别名交 #13。千克行跨表补数量，候选值须与净重一致（goods_master 容差）。
+    anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty, 申报数量]
+    notes: 海关商品表优先。别名交 #13。千克行跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。
 
   - name: gunit
     display_name: 成交单位
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [计价单位, 成交单位, 申报单位, 单位]
+    anchors: [计价单位, 成交单位, 申报单位, 单位, 申报计量单位]
     code_table: 计量单位
-    notes: 名称转码交 #14。映射层可认「单位」列；layout 词表仍不加，防框表误伤。
+    notes: 名称转码交 #14。映射层可认「单位」列；layout 词表仍不加，防框表误伤。申报计量单位为通达2 叫法（#66）。
 
   - name: qty1
     display_name: 法定第一数量
@@ -901,9 +903,9 @@ goods:
     group: goods
     layout: table_col
     sources: [customs_declaration]
-    anchors: [最终目的国, 最终目的地]
+    anchors: [最终目的国, 最终目的地, 目的国]
     code_table: 国别
-    notes: 名称转码交 #14。
+    notes: 名称转码交 #14。目的国为 GSC 叫法（#66）。
 
   - name: districtCode
     display_name: 境内目的地/境内货源地

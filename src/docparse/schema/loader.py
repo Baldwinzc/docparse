@@ -5,9 +5,12 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from docparse.schema.textnorm import fold_key
+
 
 def _fold_label(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip()).casefold()
+    # 键归一（#66）：去空白 + 全角括号统一 + 键尾剥码。「毛 重:」与「毛重」同键。
+    return fold_key(text)
 
 
 class FieldSpec(BaseModel):
@@ -26,9 +29,11 @@ class FieldSpec(BaseModel):
     notes: str = ""
     code_table: str | None = None
     # 单 sheet 表头映射（#17）。keep=原样；skip=本层不映射；
-    # trailing_code=末尾海关代码拆给 split_target。
+    # trailing_code=末尾海关代码拆给 split_target；
+    # scc_target=值整体是 18 位信用代码时写入的字段（#66 纯代码值路由）。
     head_map: str = "keep"
     split_target: str | None = None
+    scc_target: str | None = None
     # 商品列映射（#18）。keep=原样；skip=本层不映射；
     # leading_hs=取列值前缀税则号；raw_review=原文 + needs_review。
     goods_map: str = "keep"
@@ -320,6 +325,12 @@ class CodeTables(BaseModel):
         if len(set(codes)) != 1:
             return None
         return codes[0]
+
+    def known_code(self, table: str, code: str | None) -> bool:
+        """值本身是这张表的 code 吗（#66 反查兜底）。"""
+        entries = self._require_table(table).entries
+        key = str(code or "").strip()
+        return bool(key) and any(item.code == key for item in entries)
 
     def reverse(self, table: str, code: str | None) -> str | None:
         """code → 中文名称。0 或 >1 个命中都返回 None。"""

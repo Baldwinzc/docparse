@@ -9,6 +9,7 @@ import re
 
 from docparse.domain.ir import Cell, KeyValue, Sheet, Table
 from docparse.schema.loader import VocabValue, load_layout_vocab
+from docparse.schema.textnorm import fold_key
 
 # 半角 / 全角 / 小冒号（U+FE55）/ 竖排冒号。不按客户码点特判。
 _COLON_CHARS = ":：﹕︰"
@@ -128,10 +129,10 @@ def _all_kv_keys() -> frozenset[str]:
 
 
 def _norm_label(text: str) -> str:
-    # 词形归一去掉全部空白（#64）：标签里的换行/空格（「毛重\n（公斤）」「毛    重」）
-    # 不该挡住词表匹配。锚点侧的全面归一（空白/尾码/繁体）在 #66。
-    cleaned = re.sub(r"\s+", "", _label_text(text))
-    return cleaned.casefold()
+    # 词形归一（#64/#66）：去全部空白、全角括号统一、键尾剥「（≤6 位码）」
+    # （「贸易方式（0110）」＝「贸易方式」）。抽出的 KV key 仍是格子原文；
+    # 剥码只用于词表匹配，值永远不动。
+    return fold_key(_label_text(text))
 
 
 def _kv_norms() -> frozenset[str]:
