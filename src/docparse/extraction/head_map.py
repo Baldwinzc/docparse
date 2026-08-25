@@ -1,12 +1,13 @@
-"""单 sheet：版面 KV → 表头字段。不合并多 sheet，不转 code，不填 agent*。"""
+"""单 sheet：版面 KV / 平表恒定列 → 表头字段。不合并多 sheet，不转 code，不填 agent*。"""
 
 from __future__ import annotations
 
 import re
 
 from docparse.domain.fields import ExtractedField, FieldStatus
-from docparse.domain.ir import DocumentIR, Evidence, KeyValue, Sheet
-from docparse.schema.loader import FieldSpec, Schema, load_schema
+from docparse.domain.ir import DocumentIR, Evidence, KeyValue, Sheet, Table
+from docparse.extraction.goods_map import best_goods_table
+from docparse.schema.loader import FieldSpec, Schema, load_schema, load_sheet_roles
 from docparse.schema.textnorm import fold_key
 
 _TRAILING_CUSTOMS_CODE = re.compile(r"^(.*?)([A-Za-z0-9]{10})$")
@@ -17,6 +18,12 @@ _CODE_SHELL = re.compile(r"^[（(]\s*([A-Za-z0-9]+)\s*[)）]$")
 _SKIP_CONSUME = frozenset({"exclude"})
 _HEAD_LAYOUTS = frozenset({"box_kv"})
 _CALLER_PREFIX = "agent"
+_COLUMN_STRATEGY = "column"
+# 恒定列判定（#67）：非空值集合无冲突（只一个值）即恒定。合计列常只填
+# 首行（通达2 总件数=272 只在第一行），照样恒定；每行变化的行级列
+# （件数 / 净重 / 毛重）值集合 >1，天然被拦。
+_CONSTANT_MAX_VALUES = 1
+_SINGLE_ROW_ERROR = "single_row_column"
 
 
 def map_document_head(
@@ -51,7 +58,91 @@ def map_sheet_head(
             for field in _emit(spec, pair, sheet, document, schema):
                 if field.name not in found:
                     found[field.name] = field
+    if _columns_enabled(sheet):
+        _head_from_columns(sheet, document, schema, index, found)
     return list(found.values())
+
+
+def _columns_enabled(sheet: Sheet) -> bool:
+    """表列路径只对显式声明 head_from_columns 的角色开（#67 默认仅平表）。
+
+    框表 sheet 不走，防商品表常量列误伤表头 KV。
+    """
+    role = load_sheet_roles().role(sheet.role)
+    return role is not None and role.head_from_columns
+
+
+def _head_from_columns(
+    sheet: Sheet,
+    document: DocumentIR,
+    schema: Schema,
+    index: dict[str, list[FieldSpec]],
+    found: dict[str, ExtractedField],
+) -> None:
+    """平表恒定列 → 表头字段（#67）。
+
+    恒定 = 该列非空值集合无冲突（合计列只填首行也算）。每行变化的列
+    （件数 / 净重 / 毛重）是行级信息，不出表头。整表只有一行数据时
+    恒定性无法佐证，取值但标 needs_review。
+    """
+    table = best_goods_table(sheet, schema)
+    if table is None:
+        return
+    single_row = len(table.rows) == 1
+    for column, header in enumerate(table.headers):
+        if not header.strip():
+            continue
+        values = _column_values(table, column)
+        if not values:
+            continue
+        unique = {text for text, _ in values}
+        if len(unique) > _CONSTANT_MAX_VALUES:
+            continue
+        value, first_row = values[0]
+        pair = _column_pair(table, column, header, value, first_row)
+        for spec in index.get(fold_key(header), []):
+            if spec.name in found:
+                continue
+            for field in _emit(spec, pair, sheet, document, schema):
+                if field.name not in found:
+                    if single_row:
+                        field.status = FieldStatus.NEEDS_REVIEW
+                        field.validation_errors = [
+                            *field.validation_errors,
+                            _SINGLE_ROW_ERROR,
+                        ]
+                    found[field.name] = field
+
+
+def _column_values(table: Table, column: int) -> list[tuple[str, int]]:
+    """该列的非空值及所在数据行序，按行序。"""
+    header = table.headers[column]
+    values: list[tuple[str, int]] = []
+    for row_index, row in enumerate(table.rows):
+        text = (row.get(header) or "").strip()
+        if text:
+            values.append((text, row_index))
+    return values
+
+
+def _column_pair(table: Table, column: int, header: str, value: str, row: int) -> KeyValue:
+    """把「表头格 + 首个值格」包成 KeyValue，复用 KV 发射（拆码 / 纯码路由同路径）。"""
+    return KeyValue(
+        key=header,
+        value=value,
+        key_cell=table.header_cells[column] if column < len(table.header_cells) else header,
+        value_cell=_column_cell(table, column, row) or header,
+        strategy=_COLUMN_STRATEGY,
+    )
+
+
+def _column_cell(table: Table, column: int, row_index: int) -> str | None:
+    if column >= len(table.header_cells):
+        return None
+    letters = "".join(char for char in table.header_cells[column] if char.isalpha())
+    if not letters or not table.header_rows:
+        return None
+    return f"{letters}{table.header_rows[-1] + 1 + row_index}"
 
 
 def _anchor_index(schema: Schema) -> dict[str, list[FieldSpec]]:

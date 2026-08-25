@@ -70,6 +70,11 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
         for body_row in range(body_start, body_start + 200):
             if body_row not in by_row:
                 break
+            if _is_note_row(by_row[body_row]):
+                # 表尾注记行（整行都是同格冒号 KV，如通达2「境内发货人:…」）
+                # 不进表体：进了既污染恒定列判定，又把格子占住让 same_cell
+                # 接不住（#67）。表体到此为止，注记行不标 occupied。
+                break
             used_rows.add(body_row)
             values_by_col = {c.column: c.value for c in by_row[body_row]}
             record = {
@@ -90,6 +95,17 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
             )
         )
     return tables
+
+
+def _is_note_row(cells: list[Cell]) -> bool:
+    """表尾注记行：非空格全部能拆成同格冒号 KV。
+
+    数据行必有数值 / 日期格（拆不出冒号），不会整行全中。
+    """
+    non_empty = [cell for cell in cells if cell.value and cell.value.strip()]
+    if not non_empty:
+        return False
+    return all(_same_cell_colon(cell) is not None for cell in non_empty)
 
 
 def _compose_headers(row_cells: list[Cell], extra_cells: list[Cell]) -> list[str]:

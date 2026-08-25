@@ -101,6 +101,7 @@ roles:
 
   - id: declaration_list
     consume: primary
+    head_from_columns: true  # 表头级信息在列里（#67）：恒定列 → 表头字段
     signals:
       titles: []
       keys: []

@@ -9,7 +9,7 @@
 | 角色 | consume | 谁用 | #17 / #18 / #19 |
 |---|---|---|---|
 | `draft` | `primary` | 海关框表草单 / 出境备案清单 | 表头主源；主货表候选 |
-| `declaration_list` | `primary` | 扁平海关表（表头混表头字段 + 货列） | 与 draft 同权：主货表加权 10、overwrite；表头列映射交 #67 |
+| `declaration_list` | `primary` | 扁平海关表（表头混表头字段 + 货列） | 与 draft 同权：主货表加权 10、overwrite；表头经恒定列映射（`head_from_columns: true`，#67） |
 | `packing` | `supplement` | 箱单 | 只补空；核对件毛净 |
 | `invoice` | `supplement` | 发票 | 只补空 |
 | `contract` | `supplement` | 合同 | 只补空 |
@@ -50,6 +50,7 @@
 | 新叫法（「装箱明细」「形式发票」） | `sheet_roles.yaml` 已有 role 下加信号 | 否 |
 | 新单据类型（产地证、提单 sheet） | 新 `id` + `consume`；若要当主源再改 `fields.yaml` 的 `role_bonus` / `assembly` | 否（打分器已按目录走） |
 | 新的扁平海关表头 | `declaration_list.headers` | 否 |
+| 其它角色表头也在列里 | 该角色 `head_from_columns: true` | 否 |
 | 新辅助表长相对照 / 台账 | `auxiliary` 加表头或标题 | 否 |
 | 对不上 | 保持 unknown，整包复核 | 否 |
 | layout 键都没拆出来 | 先补 `layout_vocab.yaml` | 视词表 |

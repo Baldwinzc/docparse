@@ -248,6 +248,8 @@ class SheetRole(BaseModel):
     id: str
     consume: str
     lookup_pairs: bool = False
+    # 表头字段允许从商品表恒定列取值（#67 平表路径）。只对显式声明的角色开。
+    head_from_columns: bool = False
     signals: RoleSignals = Field(default_factory=RoleSignals)
 
     @model_validator(mode="after")

@@ -1,4 +1,4 @@
-# 表头映射（BOX / KV → TdecHead）
+# 表头映射（BOX / KV / 平表恒定列 → TdecHead）
 
 运行时：`extraction/head_map.py`。目录在 [`fields.yaml`](../src/docparse/schema/fields.yaml) 的 `head`。本地对眼：
 
@@ -6,20 +6,36 @@
 python -m docparse.cli head /绝对路径/表.xlsx
 ```
 
-本文件只回答「一张已经打好角色的 sheet，原文 KV 怎么变成表头字段」。不切格子（layout）、不认角色（#16）、不拼整单（#19）、不转 code（#14）。
+本文件只回答「一张已经打好角色的 sheet，原文怎么变成表头字段」。不切格子（layout）、不认角色（#16）、不拼整单（#19）、不转 code（#14）。
 
 ## 输入 / 输出
 
 ```text
-Sheet.key_values + consume
+Sheet.key_values / 恒定列 + consume
   → 只处理 consume ≠ exclude
-  → key 对 fields.yaml head.anchors（键归一化，见下）
+  → key / 表头列名 对 fields.yaml head.anchors（键归一化，见下）
   → ExtractedField（值先留原文，证据 = sheet 名 + 格子）
 ```
 
 一份 xlsx 有几张合格 sheet，就调用几次，结果**并排**。草单 `packNo=40` 和箱单上的件数不会在这一层互相覆盖。谁是主、谁补空是 #19。
 
 `auxiliary` / `unknown` 的 KV 留在 IR，本层不读。
+
+## 平表恒定列（#67）
+
+报关平表（一行一商品）没有框表 KV，表头级信息全在列里。第二条路径「表列 → 表头」：
+
+| 规则 | 说明 |
+|---|---|
+| 触发 | 角色 `head_from_columns: true`（[`sheet_roles.yaml`](../src/docparse/schema/sheet_roles.yaml)，目前仅 `declaration_list`）。框表角色不开，防商品表常量列误伤 |
+| 表 | 复用该 sheet 的最佳商品表（[`goods-map.md`](goods-map.md) 同一张） |
+| 恒定 | 该列非空值集合无冲突（只一个值）即恒定。合计列只填首行（通达2「总件数=272」只在第一行）也算 |
+| 行级防线 | 每行变化的列（件数 / 净重 / 毛重）值集合 >1，不出表头 |
+| 单行表 | 整表只有一行数据时恒定无法佐证，取值但标 `needs_review`（`single_row_column`） |
+| 证据 | 表头格 + 首个值格；发射复用 KV 路径（`trailing_code` / 纯码路由同样生效） |
+| 优先级 | 同字段 BOX KV 先、列后（`found` 先到先得） |
+
+配套：表尾冒号注记行（通达2 R52「境内发货人:…」）不进表体，格子留给 same_cell KV（layout 层 `_is_note_row`）。
 
 ## 键归一化（#66）
 
@@ -89,6 +105,10 @@ Sheet.key_values + consume
 | 键的叫法没见过，layout 都没拆出 | `layout_vocab.yaml` alias | 否 |
 | layout 有了，对不上报关字段 | 已有字段的 `anchors` | 否 |
 | 键带空白 / 换行 / 全角括号 / 尾码（`贸易方式（0110）`） | 已被键归一化吃掉，不用管 | 否 |
+| 平表新表头级列叫法（恒定列） | 已有字段的 `anchors` | 否 |
+| 恒定列判定想收紧（比如要求 ≥2 行同值） | `head_map.py` 常量 | 是 |
+| 其它角色也要走表列路径 | `sheet_roles.yaml` 该角色 `head_from_columns: true` | 否 |
+| 表尾冒号注记行误伤数据行 | `layout.py` `_is_note_row` | 是，通用规则 |
 | 新的「标签（码）」写法剥不掉 | `textnorm.py` 剥码正则 | 是，常量 |
 | 值是纯码 / 括号码，新形状 | `head_map.py` 值路由规则 | 是，通用规则 |
 | 语义是新表头字段 | `fields.yaml` 新字段 + anchors | 否（映射器按目录走） |
