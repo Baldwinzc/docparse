@@ -845,7 +845,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
     anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty, 申报数量]
-    notes: 海关商品表优先。别名交 #13。千克行跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。
+    notes: 海关商品表优先。别名交 #13。千克行同表有净重时成交数量取净重（#75）；跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。
 
   - name: gunit
     display_name: 成交单位
