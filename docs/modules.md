@@ -62,7 +62,7 @@ Excel 框表拆分（#9 / #15 / #29）：`adapters/parsers/layout.py` 从格子�
 
 名称转 code（#14）：`schema/code_tables.yaml` 全量转录 + `load_code_tables().lookup(表, 名称)`。精确匹配，未知返回空。海关口岸（四位）与港口代码分开。xlsx 原件不入库。俗称别名交 #27。
 
-sheet 角色（#16）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`。每张 sheet 标 `draft` / `packing` / `invoice` / `contract` / `auxiliary` / `unknown`，并带 `consume`（primary / supplement / exclude）。辅助表和 unknown 的 KV / table 留在 IR，不进下一张报关单。新叫法加 YAML，不按公司写分支。见 [sheet-roles.md](sheet-roles.md)。
+sheet 角色（#16 / #65）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`。每张 sheet 标 `draft` / `declaration_list` / `packing` / `invoice` / `contract` / `auxiliary` / `unknown`，并带 `consume`（primary / supplement / exclude）。`declaration_list` 是扁平海关表，与 draft 同权 consume=primary。辅助表和 unknown 的 KV / table 留在 IR，不进下一张报关单。新叫法加 YAML，不按公司写分支。见 [sheet-roles.md](sheet-roles.md)。
 
 表头映射（#17）：`extraction/head_map.py` 吃已拆 `key_values`，按 `fields.yaml` 的 `anchors` / `head_map` 写成 TdecHead 候选。一次一张 sheet，多 sheet 并排放，不覆盖。`agent*` 不从文件填。中文值不转 code。名称+10 位海关代码用 `trailing_code`。运费 / 航次 / 唛码拆分见 #34–#36，发票号槽位见 #37。本地对眼：`python -m docparse.cli head file.xlsx`。见 [head-map.md](head-map.md)。
 

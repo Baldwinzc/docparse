@@ -213,7 +213,9 @@ class LayoutVocab(BaseModel):
         return group.value
 
 
-_ROLE_IDS = frozenset({"draft", "packing", "invoice", "contract", "auxiliary", "unknown"})
+_ROLE_IDS = frozenset(
+    {"draft", "declaration_list", "packing", "invoice", "contract", "auxiliary", "unknown"}
+)
 _CONSUME_IDS = frozenset({"primary", "supplement", "exclude"})
 
 

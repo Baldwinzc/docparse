@@ -183,6 +183,162 @@ def _notes(sheet) -> None:
     sheet["A3"] = "不要当箱单"
 
 
+def _declaration_list(sheet) -> None:
+    headers = [
+        "申报日期",
+        "申报海关",
+        "账册号",
+        "备案序号",
+        "申报计量单位",
+        "第一法定数量",
+        "第二法定单位",
+        "申报单价",
+        "申报总价",
+        "总件数",
+        "总净重(千克)",
+        "总毛重(千克)",
+        "申报要素",
+        "监管方式",
+        "征免性质",
+        "成交方式",
+        "包装类型",
+        "贸易国(地区)",
+        "运抵国(地区)",
+        "指运港",
+        "离境口岸",
+        "境内货源地",
+    ]
+    for index, header in enumerate(headers, start=1):
+        sheet.cell(1, index, header)
+    sheet.cell(2, 1, "2026/08/13")
+    sheet.cell(2, 2, "东兴海关")
+    sheet.cell(2, 3, "44133607NZ-001")
+    for row in sheet.iter_rows(min_row=1, max_row=2, min_col=1, max_col=len(headers)):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _gsc_draft(sheet) -> None:
+    sheet["A1"] = "出境备案清单"
+    sheet["A2"] = "出口口岸"
+    sheet["C2"] = "5304"
+    sheet["F2"] = "备案号"
+    sheet["G2"] = "T5339W000208"
+    sheet["A3"] = "运输方式"
+    sheet["B3"] = "水路运输"
+    sheet["A4"] = "贸易方式"
+    sheet["B4"] = "区内物流货物"
+    sheet["A5"] = "境外收货人"
+    sheet["B5"] = "GREAT SUN WAY ENTERPRISE LTD."
+    sheet["A6"] = "运抵国"
+    sheet["B6"] = "中国台湾"
+    sheet["C6"] = "指运港"
+    sheet["D6"] = "中国台湾"
+    sheet["E6"] = "离境口岸"
+    sheet["F6"] = "赤湾"
+    sheet["A7"] = "成交方式"
+    sheet["B7"] = "FOB"
+    sheet["C7"] = "包装种类"
+    sheet["D7"] = "纸箱"
+    sheet["A8"] = "项号"
+    sheet["B8"] = "海关编码"
+    sheet["A9"] = 1
+    sheet["B9"] = "8528521200"
+    for row in sheet.iter_rows(min_row=1, max_row=9, min_col=1, max_col=6):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _dangnali_packing(sheet) -> None:
+    sheet["H1"] = "装 箱 单"
+    sheet["A6"] = "项目号"
+    sheet["F6"] = "数量 (本)"
+    sheet["G6"] = "净重 (KG)"
+    sheet["H6"] = "毛重 (KG)"
+    sheet["J6"] = "纸箱数"
+    sheet["A7"] = "P001"
+    sheet["F7"] = 100
+    for row in sheet.iter_rows(min_row=6, max_row=7, min_col=1, max_col=10):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _dangnali_invoice(sheet) -> None:
+    sheet["A2"] = "出     口    发     票"
+    sheet["H4"] = "发票号:"
+    sheet["K4"] = "R26JU551-Y"
+    sheet["A10"] = "序号"
+    sheet["B10"] = "商品编号"
+    sheet["C10"] = "商品名称"
+    sheet["A11"] = 1
+    sheet["B11"] = "4901990000"
+    for row in sheet.iter_rows(min_row=10, max_row=11, min_col=1, max_col=3):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _dangnali_contract(sheet) -> None:
+    sheet["A1"] = "销 售 合 同"
+    sheet["A4"] = "卖方(SELLER)："
+    sheet["B4"] = "示例卖方"
+    sheet["F4"] = "买方(BUYER)："
+    sheet["G4"] = "示例买方"
+    sheet["A8"] = "卖方"
+    sheet["B8"] = "示例卖方"
+    sheet["F8"] = "买方"
+    sheet["G8"] = "示例买方"
+    sheet["A10"] = "商品名称"
+    sheet["B10"] = "数量"
+    sheet["C10"] = "单价"
+    sheet["D10"] = "总价"
+    sheet["A11"] = "书刊"
+    sheet["B11"] = 10
+    for row in sheet.iter_rows(min_row=10, max_row=11, min_col=1, max_col=4):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _mxy_contract(sheet) -> None:
+    sheet["A1"] = "合     同"
+    sheet["A3"] = "CONTRACT"
+    sheet["A4"] = "賣  方"
+    sheet["B4"] = "示例卖方"
+    sheet["F4"] = "合約號碼"
+    sheet["G4"] = "MXY2026-0616"
+    sheet["A8"] = "買  方"
+    sheet["B8"] = "示例买方"
+    sheet["A12"] = "Name of commodity and Specification"
+    sheet["B12"] = "Quantity"
+    sheet["C12"] = "Unit Price"
+    sheet["D12"] = "Amount"
+    sheet["A13"] = "UPS"
+    sheet["B13"] = 8
+    for row in sheet.iter_rows(min_row=12, max_row=13, min_col=1, max_col=4):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _duoke_hidden(sheet) -> None:
+    sheet["A1"] = "型号"
+    sheet["B1"] = "报关型号"
+    sheet["C1"] = "报关单价"
+    sheet["D1"] = "申报要素"
+    sheet["A2"] = "DCM8"
+    sheet["B2"] = "DCM8"
+    sheet["C2"] = 158
+    sheet["D2"] = "1|0|电脑显示拓展用"
+    for row in sheet.iter_rows(min_row=1, max_row=2, min_col=1, max_col=4):
+        for cell in row:
+            cell.border = _thin()
+
+
+def _elements_sheet(sheet) -> None:
+    sheet["A1"] = "规格型号"
+    sheet["C1"] = "申报要素"
+    sheet["A2"] = "DCM8"
+    sheet["C2"] = "1|0|电脑显示拓展用"
+
+
 def _roles(document) -> dict[str, str]:
     return {sheet.name: sheet.role for sheet in document.sheets}
 
@@ -191,12 +347,14 @@ def test_sheet_roles_catalog_loads() -> None:
     catalog = load_sheet_roles()
     assert {role.id for role in catalog.roles} == {
         "draft",
+        "declaration_list",
         "packing",
         "invoice",
         "contract",
         "auxiliary",
     }
     assert catalog.role("draft").consume == "primary"
+    assert catalog.role("declaration_list").consume == "primary"
     assert catalog.role("packing").consume == "supplement"
     assert catalog.role("auxiliary").consume == "exclude"
     assert catalog.unknown_consume == "exclude"
@@ -318,3 +476,91 @@ def test_guoguang_sample_roles() -> None:
     assert roles["总箱单"] == "packing"
     invoice = next(name for name in roles if "发票" in name)
     assert roles[invoice] == "invoice"
+
+
+def test_flat_customs_table_is_declaration_list() -> None:
+    document = parse_excel(
+        _workbook({"Sheet1": _declaration_list}),
+        file_id="td",
+        filename="tongda-fixture.xlsx",
+    )
+    sheet = document.sheets[0]
+    assert sheet.role == "declaration_list"
+    assert sheet.consume == "primary"
+    assert sheet.role_confidence >= 0.95
+
+
+def test_boxed_filing_list_is_draft() -> None:
+    document = parse_excel(
+        _workbook({"Sheet1": _gsc_draft}),
+        file_id="gsc",
+        filename="gsc-fixture.xlsx",
+    )
+    sheet = document.sheets[0]
+    assert sheet.role == "draft"
+    assert sheet.consume == "primary"
+
+
+def test_dangnali_style_titles_route_commercial_sheets() -> None:
+    document = parse_excel(
+        _workbook(
+            {
+                "装 箱 单": _dangnali_packing,
+                "出口发票": _dangnali_invoice,
+                "销售合同": _dangnali_contract,
+            }
+        ),
+        file_id="dn",
+        filename="dangnali-fixture.xls",
+    )
+    assert _roles(document) == {
+        "装 箱 单": "packing",
+        "出口发票": "invoice",
+        "销售合同": "contract",
+    }
+
+
+def test_traditional_contract_keys_route_contract() -> None:
+    document = parse_excel(
+        _workbook({"合同": _mxy_contract}),
+        file_id="mxy",
+        filename="mxy-fixture.xlsx",
+    )
+    sheet = document.sheets[0]
+    assert sheet.role == "contract"
+    assert sheet.consume == "supplement"
+
+
+def test_elements_and_hidden_stay_non_primary() -> None:
+    document = parse_excel(
+        _workbook({"申报要素": _elements_sheet, "隐藏": _duoke_hidden}),
+        file_id="dk",
+        filename="duoke-fixture.xls",
+    )
+    roles = _roles(document)
+    assert roles["申报要素"] in {"unknown", "auxiliary"}
+    assert roles["隐藏"] in {"unknown", "auxiliary"}
+    consume = {sheet.name: sheet.consume for sheet in document.sheets}
+    assert consume["申报要素"] == "exclude"
+    assert consume["隐藏"] == "exclude"
+
+
+def test_hengxin_draft_still_beats_declaration_list() -> None:
+    document = parse_excel(
+        _workbook({"一般贸易出口": _draft, "Sheet1": _declaration_list}),
+        file_id="mix",
+        filename="hengxin-fixture.xlsx",
+    )
+    assert _roles(document) == {
+        "一般贸易出口": "draft",
+        "Sheet1": "declaration_list",
+    }
+
+
+def test_baoguan_substring_does_not_promote_lookup() -> None:
+    document = parse_excel(
+        _workbook({"隐藏": _duoke_hidden, "Sheet3": _history_ledger}),
+        file_id="aux",
+        filename="duoke-fixture.xls",
+    )
+    assert _roles(document) == {"隐藏": "unknown", "Sheet3": "auxiliary"}

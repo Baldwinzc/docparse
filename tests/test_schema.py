@@ -186,6 +186,8 @@ def test_goods_map_flags_and_master_signals() -> None:
     fields = {item.field for item in schema.goods_master.signals}
     assert {"gno", "codeTs", "gname", "gqty", "declPrice", "cusOriginCountry"} <= fields
     assert schema.goods_master.role_bonus["draft"] > schema.goods_master.role_bonus["packing"]
+    bonus = schema.goods_master.role_bonus
+    assert bonus["declaration_list"] == bonus["draft"]
 
 
 def test_assembly_policy_is_role_based() -> None:
@@ -193,6 +195,9 @@ def test_assembly_policy_is_role_based() -> None:
     policy = schema.assembly
     assert policy.primary_role == "draft"
     assert policy.fill["draft"] == "overwrite"
+    assert policy.fill["declaration_list"] == "overwrite"
+    assert policy.role_priority[0] == "declaration_list"
+    assert "declaration_list" in policy.role_priority
     assert policy.fill["packing"] == "fill"
     assert "packNo" in policy.reconcile
     assert "supvModeCdde" in policy.customs_only
@@ -305,8 +310,16 @@ def test_layout_vocab_covers_issue_aliases() -> None:
 def test_sheet_roles_cover_issue_roles() -> None:
     catalog = load_sheet_roles()
     by_id = {role.id: role for role in catalog.roles}
-    assert set(by_id) == {"draft", "packing", "invoice", "contract", "auxiliary"}
+    assert set(by_id) == {
+        "draft",
+        "declaration_list",
+        "packing",
+        "invoice",
+        "contract",
+        "auxiliary",
+    }
     assert by_id["draft"].consume == "primary"
+    assert by_id["declaration_list"].consume == "primary"
     assert {by_id[name].consume for name in ("packing", "invoice", "contract")} == {"supplement"}
     assert by_id["auxiliary"].consume == "exclude"
     assert catalog.unknown_consume == "exclude"
