@@ -22,6 +22,15 @@ _DATE_ONLY = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
 _DATETIME_LEFT = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2})?$")
 _TIME_FULL = re.compile(r"^\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?$")
 _NUMERIC = re.compile(r"^[\d.,]+$")
+# 占位格：(  ) / （　） 视同空。占位后跟提示文字（「(  )跨境的才需要申报」）
+# 也整体视同空——那是模板提示，不是填了的值。
+_PLACEHOLDER = re.compile(r"^[\(（]\s*[\)）]")
+# 右向跳空取值：标签与值之间允许的空列上限（#64）。间距更大改这里。
+_RIGHT_SKIP_MAX = 2
+
+
+def _is_placeholder(text: str) -> bool:
+    return _PLACEHOLDER.match(text.strip()) is not None
 
 
 def split_sheet(sheet: Sheet) -> Sheet:
@@ -63,7 +72,7 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
             used_rows.add(body_row)
             values_by_col = {c.column: c.value for c in by_row[body_row]}
             record = {
-                header: values_by_col.get(col, "")
+                header: _blank_if_placeholder(values_by_col.get(col, ""))
                 for header, col in zip(headers, columns, strict=True)
             }
             if not any(record.values()):
@@ -119,7 +128,9 @@ def _all_kv_keys() -> frozenset[str]:
 
 
 def _norm_label(text: str) -> str:
-    cleaned = re.sub(r"\s+", " ", _label_text(text))
+    # 词形归一去掉全部空白（#64）：标签里的换行/空格（「毛重\n（公斤）」「毛    重」）
+    # 不该挡住词表匹配。锚点侧的全面归一（空白/尾码/繁体）在 #66。
+    cleaned = re.sub(r"\s+", "", _label_text(text))
     return cleaned.casefold()
 
 
@@ -150,15 +161,26 @@ def _ends_with_colon(text: str) -> bool:
     return bool(stripped) and stripped[-1] in _COLON_CHARS
 
 
+def _blank_if_placeholder(text: str) -> str:
+    return "" if _is_placeholder(text) else text
+
+
 def _is_box_label_row(row_cells: list[Cell]) -> bool:
-    """框表标签横排（包装种类/件数/毛重…）不当表头。只看 BOX，不看 KV。"""
+    """框表标签横排（包装种类/件数/毛重…）不当表头。只看 BOX，不看 KV。
+
+    占位格视同空（#64）：不占「整行 BOX」的名额，也不破坏判定。
+    """
     labels = _box_labels()
     hits = 0
+    present = 0
     for cell in row_cells:
         cleaned = _label_text(cell.value)
+        if _is_placeholder(cleaned):
+            continue
+        present += 1
         if cleaned in labels:
             hits += 1
-    return hits >= 3 and hits == len(row_cells)
+    return hits >= 3 and hits == present
 
 
 def _is_header_row(row_cells: list[Cell]) -> bool:
@@ -170,6 +192,10 @@ def _is_header_row(row_cells: list[Cell]) -> bool:
     hits = 0
     for cell in row_cells:
         text = cell.value
+        # 真实表头行全是文本（#64）：混进纯数值 / 日期 / 占位格的是数据行，
+        # 长套话格凑 token 不算表头。
+        if _looks_like_data_cell(text) or _is_placeholder(text):
+            return False
         if any(_token_in_text(token, text) for token in tokens):
             hits += 1
     return hits >= 2
@@ -246,7 +272,7 @@ def _detect_key_values(cells: list[Cell], occupied: set[str]) -> list[KeyValue]:
         found.append(item)
 
     for cell in cells:
-        if cell.address in occupied or not cell.value:
+        if cell.address in occupied or not cell.value or _is_placeholder(cell.value):
             continue
         candidates = [
             item
@@ -317,6 +343,8 @@ def _same_cell_colon(cell: Cell) -> KeyValue | None:
     if not split:
         return None
     key, value = split
+    if _is_placeholder(value):
+        return None
     if _DATETIME_LEFT.match(key) or _TIME_FULL.match(key):
         return None
     if any(_token_in_text(token, key) for token in _table_tokens()):
@@ -374,6 +402,8 @@ def _value_below(
     other = by_pos.get((below_row, cell.column))
     if other is None or other.address in occupied or not other.value:
         return None
+    if _is_placeholder(other.value):
+        return None
     if _same_cell_colon(other) is not None or _looks_like_label(other.value):
         return None
     key = _key_text(cell.value)
@@ -384,6 +414,24 @@ def _value_below(
         value_cell=other.address,
         strategy="below",
     )
+
+
+def _scan_right(
+    cell: Cell,
+    by_pos: dict[tuple[int, int], Cell],
+) -> Cell | None:
+    """右向找值：跳过 ≤_RIGHT_SKIP_MAX 个空列 / 占位格，取第一个非空格。"""
+    row = cell.row
+    col = (_merge_right(cell) or 0) + 1
+    blanks = 0
+    while blanks <= _RIGHT_SKIP_MAX:
+        other = by_pos.get((row, col))
+        if other is None or not other.value.strip() or _is_placeholder(other.value):
+            blanks += 1
+            col += 1
+            continue
+        return other
+    return None
 
 
 def _value_right(
@@ -397,9 +445,8 @@ def _value_right(
     key = _key_text(text)
     if not (_ends_with_colon(text) or _is_known_key(key)):
         return None
-    right_col = _merge_right(cell) + 1
-    other = by_pos.get((cell.row, right_col))
-    if other is None or other.address in occupied or not other.value:
+    other = _scan_right(cell, by_pos)
+    if other is None or other.address in occupied:
         return None
     if _same_cell_colon(other) is not None or _looks_like_label(other.value):
         return None
