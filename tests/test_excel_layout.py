@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -425,3 +426,233 @@ def test_unlike_values_drop_the_key() -> None:
     document = parse_excel(_value_shape_workbook(), file_id="v1", filename="shape.xlsx")
     sheet = document.sheets[0]
     assert "Invoice No." not in _pairs(sheet)
+
+
+_SAMPLES = Path("/Users/baldwin/Desktop/taizhou/补充测试")
+REAL_GSC = _SAMPLES / "GSC出仓QPGSCO260617006A.xlsx"
+REAL_GSRUA = _SAMPLES / "GSRUA26601CLLG01(1).xlsx"
+
+_PLACEHOLDER_VALUE = re.compile(r"^[\(（]\s*[\)）]")
+
+
+def _flat_gap_workbook() -> bytes:
+    """GSC 平表：标签与值隔空列、below 是下一行的标签。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "出境备案清单"
+
+    sheet["A2"] = "出口口岸"
+    sheet["C2"] = "5304"
+    sheet["A3"] = "经营单位"
+    sheet["C3"] = "440356K004"
+    sheet["F2"] = "备案号"
+    sheet["G2"] = "T5339W000208"
+    sheet["F3"] = "运输工具"
+    sheet["A6"] = "许可证号"
+    sheet["A7"] = "批准文号"
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_right_skips_blank_columns_and_rejects_label_below() -> None:
+    document = parse_excel(_flat_gap_workbook(), file_id="g1", filename="flat.xlsx")
+    sheet = document.sheets[0]
+    pairs = _pairs(sheet)
+    assert pairs["出口口岸"] == "5304"
+    assert pairs["备案号"] == "T5339W000208"
+    assert pairs["经营单位"] == "440356K004"
+    values = {item.value for item in sheet.key_values}
+    assert "经营单位" not in values
+    assert "运输工具" not in values
+    assert "批准文号" not in values
+    assert "许可证号" not in pairs
+
+
+def _fake_header_workbook() -> bytes:
+    """GSC R6/R8：长套话凑 token 的数据行不当表头。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "出境备案清单"
+
+    sheet["D6"] = "运抵国"
+    sheet["E6"] = "中国台湾"
+    sheet["F6"] = "指运港"
+    sheet["G6"] = "中国台湾"
+    sheet["I6"] = "境内货源地"
+    sheet["J6"] = "44036"
+    sheet["T6"] = "关联收发货单位海关编码"
+
+    sheet["D7"] = "成交方式"
+    sheet["E7"] = "FOB"
+    sheet["D8"] = "件数"
+    sheet["E8"] = "230.000000"
+    sheet["F8"] = "包装种类"
+    sheet["G8"] = "纸制或纤维板制盒/箱"
+    sheet["I8"] = "毛重"
+    sheet["J8"] = "1560"
+    sheet["K8"] = "净重"
+    sheet["L8"] = "785.02760"
+
+    headers = ["项号", "海关编码", "商品名称", "规格型号", "数量"]
+    for col, header in enumerate(headers, start=1):
+        sheet.cell(11, col, header)
+    sheet["A12"] = "1"
+    sheet["B12"] = "9503002900"
+    sheet["C12"] = "塑胶动漫造形"
+    sheet["D12"] = "MAX FACTORY 品牌"
+    sheet["E12"] = "96"
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_data_rows_with_numbers_are_not_fake_headers() -> None:
+    document = parse_excel(_fake_header_workbook(), file_id="g2", filename="fake.xlsx")
+    sheet = document.sheets[0]
+    header_rows = {table.header_row for table in sheet.tables}
+    assert 6 not in header_rows
+    assert 8 not in header_rows
+
+    pairs = _pairs(sheet)
+    assert pairs["运抵国"] == "中国台湾"
+    assert pairs["指运港"] == "中国台湾"
+    assert pairs["成交方式"] == "FOB"
+    assert float(pairs["件数"]) == 230
+    assert pairs["包装种类"] == "纸制或纤维板制盒/箱"
+    assert float(pairs["毛重"]) == 1560
+    assert float(pairs["净重"]) == 785.0276
+
+    goods = next(table for table in sheet.tables if table.header_row == 11)
+    assert goods.rows[0]["海关编码"] == "9503002900"
+
+
+def _placeholder_workbook() -> bytes:
+    """GSRUA：占位格 (  ) 不当值、不当表头，框表标签行带占位格仍成立。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "报关单"
+
+    sheet["A2"] = "预录入编号："
+    sheet["G2"] = "申报口岸:"
+    sheet["G3"] = "(    )"
+    sheet["F3"] = "出境关别"
+    sheet["H3"] = "出口日期"
+    sheet["F7"] = "监管方式"
+    sheet["G7"] = "(    )"
+    sheet["H7"] = "征免性质"
+    sheet["I7"] = "(    )"
+
+    sheet["A11"] = "包装类型"
+    sheet["C11"] = "(    )"
+    sheet["F11"] = "件数"
+    sheet["G11"] = "毛重（千克）"
+    sheet["H11"] = "净重（千克）"
+    sheet["J11"] = "成交方式"
+    sheet["K11"] = "(  )"
+    sheet["L11"] = "运费"
+    sheet["A12"] = "胶合板箱,纸箱"
+    sheet["F12"] = "10"
+    sheet["G12"] = "1725"
+    sheet["H12"] = "1017.72"
+    sheet["J12"] = "DAT Selyatino"
+
+    headers = ["项号", "商品编号", "商品名称"]
+    for col, header in enumerate(headers, start=1):
+        sheet.cell(15, col, header)
+    sheet["A16"] = "1"
+    sheet["B16"] = "9503002900"
+    sheet["C16"] = "塑胶动漫造形"
+    sheet["A17"] = "(    )"
+    sheet["B17"] = "(    )"
+    sheet["C17"] = "(    )"
+    sheet["A18"] = "2"
+    sheet["B18"] = "9503002901"
+    sheet["C18"] = "第二行"
+
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_placeholder_cells_are_blank_not_values() -> None:
+    document = parse_excel(_placeholder_workbook(), file_id="p1", filename="ph.xlsx")
+    sheet = document.sheets[0]
+    pairs = _pairs(sheet)
+    assert "申报口岸" not in pairs
+    assert "出境关别" not in pairs
+    assert "征免性质" not in pairs
+    assert all(_PLACEHOLDER_VALUE.match(value) is None for value in pairs.values())
+
+    header_rows = {table.header_row for table in sheet.tables}
+    assert 11 not in header_rows
+    assert pairs["包装类型"] == "胶合板箱,纸箱"
+    assert pairs["件数"] == "10"
+    assert float(pairs["毛重（千克）"]) == 1725
+    assert float(pairs["净重（千克）"]) == 1017.72
+    assert pairs["成交方式"] == "DAT Selyatino"
+
+    goods = next(table for table in sheet.tables if table.header_row == 15)
+    assert [row["项号"] for row in goods.rows] == ["1"]
+
+
+@pytest.mark.skipif(not REAL_GSC.exists(), reason="本地 GSC 样本不在 CI")
+def test_real_gsc_flat_layout_kvs_and_goods_table() -> None:
+    document = parse_excel(
+        REAL_GSC.read_bytes(),
+        file_id="gsc",
+        filename=REAL_GSC.name,
+    )
+    draft = document.sheets[0]
+    pairs = _pairs(draft)
+    assert pairs["出口口岸"] == "5304"
+    assert pairs["备案号"] == "T5339W000208"
+    assert pairs["贸易方式"] == "区内物流货物"
+    assert pairs["运抵国"] == "中国台湾"
+    assert pairs["指运港"] == "中国台湾"
+    assert float(pairs["件数"]) == 230
+    assert pairs["包装种类"] == "纸制或纤维板制盒/箱"
+    assert float(pairs["毛重"]) == 1560
+    assert float(pairs["净重"]) == 785.0276
+    assert pairs["成交方式"] == "FOB"
+    assert pairs["贸易国"] == "中国台湾"
+
+    values = {item.value for item in draft.key_values}
+    assert "经营单位" not in values
+    assert "运输工具" not in values
+    assert "批准文号" not in values
+
+    header_rows = {table.header_row for table in draft.tables}
+    assert 6 not in header_rows
+    assert 8 not in header_rows
+    goods = next(table for table in draft.tables if table.header_row == 11)
+    assert len(goods.rows) == 50
+    assert goods.rows[0]["海关编码"] == "9503002900"
+
+
+@pytest.mark.skipif(not REAL_GSRUA.exists(), reason="本地 GSRUA 样本不在 CI")
+def test_real_gsrua_box_row_with_placeholders() -> None:
+    document = parse_excel(
+        REAL_GSRUA.read_bytes(),
+        file_id="gsrua",
+        filename=REAL_GSRUA.name,
+    )
+    draft = document.sheets[0]
+    pairs = _pairs(draft)
+    assert pairs["包装类型"] == "胶合板箱,纸箱"
+    assert pairs["件数"] == "10"
+    assert float(pairs["毛重（千克）"]) == 1725
+    assert float(pairs["净重（千克）"]) == 1017.72
+    assert pairs["成交方式"] == "DAT Selyatino"
+    assert "出境关别" not in pairs
+    assert "征免性质" not in pairs
+    assert "离境口岸" not in pairs
+    assert "申报口岸" not in pairs
+    assert all(_PLACEHOLDER_VALUE.match(value) is None for value in pairs.values())
+
+    header_rows = {table.header_row for table in draft.tables}
+    assert 11 not in header_rows
+    goods = next(table for table in draft.tables if table.header_row == 19)
+    assert len(goods.rows) == 101
