@@ -28,7 +28,7 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 需可选依赖；图片未接 OCR | PDF / 扫描件 OCR |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→TextIn OCR、图片同入口（#22） | 版面重建（#62）、端到端（#23） |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
 | 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；旧锚点仍给无 sheet 的文本 | PDF 同组装交 #23 |
@@ -75,6 +75,8 @@ FastAPI 交单（#21）：`POST /v1/jobs` 与 `cli declare` 走同一条 pipelin
 对眼页（#44）：`GET /review` 静态页 + `GET /v1/schema`。只画报关单和复核证据，不渲染 IR。见 [review.md](review.md)。
 
 抽取后校验（#20）：规则先写在 [validate-rules.md](validate-rules.md) 给业务确认。位数 / 正则 / 容差确认后再进数据文件，引擎只执行，不编造、不改值。
+
+云 OCR（#22，选型见 [ocr-benchmark.md](ocr-benchmark.md)）：`adapters/parsers/ocr.py` 的 `TextinOcrClient`，密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警不崩。请求带 `straighten=1`，返回的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings，给 #62 版面重建）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。40306 QPS 限流按官方说明不重试、只告警。换 OCR 引擎只在 `ocr.py` 加一个 client 实现 `OcrClient` 协议，不动 `pdf.py` / `image.py` / pipeline。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 

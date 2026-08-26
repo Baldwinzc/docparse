@@ -1,5 +1,19 @@
 from docparse.adapters.parsers.detect import detect_kind
-from docparse.adapters.parsers.ocr import OcrClient, UnimplementedOcrClient
+from docparse.adapters.parsers.ocr import (
+    OcrClient,
+    OcrLine,
+    OcrOutcome,
+    TextinOcrClient,
+    get_ocr_client,
+)
 from docparse.adapters.parsers.registry import parse_bytes
 
-__all__ = ["OcrClient", "UnimplementedOcrClient", "detect_kind", "parse_bytes"]
+__all__ = [
+    "OcrClient",
+    "OcrLine",
+    "OcrOutcome",
+    "TextinOcrClient",
+    "detect_kind",
+    "get_ocr_client",
+    "parse_bytes",
+]

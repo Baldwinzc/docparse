@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4.1-mini"
     vlm_model: str = "gpt-4.1-mini"
 
+    # 云 OCR（TextIn 通用，#60 选型）；无密钥时扫描件只登记告警，不崩
+    textin_app_id: str = ""
+    textin_secret_code: str = ""
+
     job_store: str = "memory"
     file_store: str = "memory"
 

@@ -117,7 +117,7 @@ flowchart TB
 |---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 |
 | 安全解压 | `adapters/parsers/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；PDF/Excel 需可选依赖 |
+| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf + TextIn 密钥） |
 | 统一文档 IR | `domain/ir.py` | 已定形状 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 |
