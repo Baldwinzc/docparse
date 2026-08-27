@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from docparse.adapters.parsers.ocr_layout import reconstruct_document
 from docparse.adapters.parsers.registry import parse_bytes
 from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
 from docparse.extraction.head_map import map_sheet_head
@@ -65,7 +66,9 @@ def _parse(path: Path) -> int:
 
 
 def _layout(path: Path) -> int:
-    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    document = reconstruct_document(
+        parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    )
     payload = {
         "filename": document.filename,
         "warnings": document.warnings,
@@ -88,7 +91,9 @@ def _layout(path: Path) -> int:
 
 
 def _head(path: Path) -> int:
-    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    document = reconstruct_document(
+        parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    )
     payload = {
         "filename": document.filename,
         "sheets": [
@@ -114,7 +119,9 @@ def _head(path: Path) -> int:
 
 
 def _goods(path: Path) -> int:
-    document = parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    document = reconstruct_document(
+        parse_bytes(path.read_bytes(), file_id=uuid4().hex, filename=path.name)
+    )
     payload = {
         "filename": document.filename,
         "sheets": [

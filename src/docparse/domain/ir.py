@@ -42,6 +42,9 @@ class Cell(BaseModel):
     merge_range: str | None = None
     formula: str | None = None
     border: CellBorder | None = None
+    # OCR 伪格子回指原字块（#62）。xlsx 格子保持空。
+    bbox: BoundingBox | None = None
+    block_ids: list[str] = Field(default_factory=list)
 
 
 class KeyValue(BaseModel):
