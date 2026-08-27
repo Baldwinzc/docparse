@@ -117,6 +117,126 @@ def peninsula_like_document() -> DocumentIR:
     )
 
 
+# 进境备案清单形（#82）：y/x 分布按真机，公司名 / 信用代码 / 单证号换成自造值。
+# 关键几何：标签行与取值行的 x 各不相同，列界由最密的包装种类行投出，
+# 标签与值会差一列（进境关别 c3 / 莲塘海关 c2），靠邻列兜底配上。
+_ENTRY_LIST_USCC = "91440300MA5EXAMP01"
+
+
+def entry_list_like_blocks() -> list[TextBlock]:
+    """进境备案清单头部：标签带信用代码、值列漂移、紧凑日期、词表标签贴值行。"""
+    return [
+        _block("t", "中华人民共和国海关进境货物备案清单", 266.5, 34.0, 573.5, 56.0),
+        # 第一横排：标签 / 值（进境关别与备案号的值会漂一列）
+        _block("p1k1", f"境内收货人（{_ENTRY_LIST_USCC}）", 39.0, 89.0, 171.0, 99.0),
+        _block("p1k2", "进境关别（5354）", 257.0, 88.0, 322.5, 100.5),
+        _block("p1k3", "进境日期", 385.5, 88.0, 419.0, 98.0),
+        _block("p1k4", "申报日期", 519.5, 88.0, 551.5, 98.0),
+        _block("p1k5", "备案号", 639.5, 89.0, 664.0, 98.0),
+        _block("p1v1", "北岸（深圳）供应链有限公司", 38.0, 99.0, 159.5, 111.0),
+        _block("p1v2", "莲塘海关", 257.5, 99.0, 297.0, 111.0),
+        _block("p1v3", "20250814", 385.5, 100.5, 424.0, 110.5),
+        _block("p1v4", "20250813", 518.5, 100.5, 557.0, 110.5),
+        _block("p1v5", "T5352W000228", 639.5, 101.5, 695.0, 110.5),
+        # 第二横排：同列对照（境外发货人 → 英文名）
+        _block("p2k1", "境外发货人", 39.0, 113.0, 79.0, 122.5),
+        _block("p2v1", "NORTHWIND TRADING LIMITED", 38.0, 122.5, 182.5, 135.0),
+        # 密标签行：给整个框表区定列（漂移由它造成）
+        _block("b1", "包装种类（22）", 39.0, 182.5, 90.5, 192.5),
+        _block("b2", "件数", 257.5, 182.0, 275.5, 191.5),
+        _block("b3", "毛重（千克）", 303.0, 180.5, 342.0, 192.5),
+        _block("b4", "净重（千克）", 385.5, 182.0, 425.0, 191.5),
+        _block("b5", "成交方式（1）", 459.5, 182.0, 508.0, 194.0),
+        _block("b6", "运费", 518.5, 182.0, 536.0, 191.5),
+        _block("b7", "保费", 610.5, 182.0, 628.5, 191.5),
+        _block("b8", "杂费", 702.5, 182.5, 720.0, 191.5),
+        _block("bv1", "纸制或纤维板制盒／箱", 38.0, 192.5, 127.5, 205.0),
+        _block("bv2", "214", 257.5, 194.0, 274.0, 203.0),
+        _block("bv3", "1459.62", 303.5, 193.5, 337.0, 203.0),
+        _block("bv4", "485", 385.5, 194.0, 402.0, 203.0),
+        # 词表标签紧贴值行：不当续行并入包装种类值（#82）
+        _block("ad", "随附单证及编号", 39.0, 205.0, 94.0, 214.5),
+        _block(
+            "ad1",
+            "随附单证1：保税核注清单QD0000000000000 随附单证2：提／运单",
+            39.0,
+            215.5,
+            303.5,
+            228.0,
+        ),
+    ]
+
+
+def entry_list_like_document() -> DocumentIR:
+    blocks = entry_list_like_blocks()
+    return DocumentIR(
+        document_id="d-entry",
+        file_id="f-entry",
+        filename="entry.pdf",
+        media_type="application/pdf",
+        pages=[Page(page_number=1, width=800, height=400, blocks=blocks)],
+        raw_text="",
+    )
+
+
+def footer_like_blocks() -> list[TextBlock]:
+    """商品表 + 表尾声明区：声明词命中即停，表尾不进表体（#82）。"""
+    blocks: list[TextBlock] = [
+        _block("t", "中华人民共和国海关进境货物备案清单", 266.5, 34.0, 573.5, 56.0),
+    ]
+    header_y = 260.0
+    for name, (x0, x1) in _TABLE_XS.items():
+        blocks.append(_block(f"h-{name}", name, x0, header_y, x1, header_y + 24))
+    goods = [
+        ("1", "1905310000", "黄油酥饼", "120", "1.2", "144", "中国"),
+        ("2", "1905900000", "巧克力派", "80", "2.5", "200", "中国"),
+    ]
+    y = header_y + _ROW_H
+    for index, (gno, hs, name, qty, price, total, origin) in enumerate(goods, start=1):
+        values = {
+            "项号": gno,
+            "商品编号": hs,
+            "商品名称及规格型号": name,
+            "数量": qty,
+            "单价": price,
+            "总价": total,
+            "原产国": origin,
+        }
+        for col, text in values.items():
+            x0, x1 = _TABLE_XS[col]
+            blocks.append(_block(f"g{index}-{col}", text, x0, y, x1, y + 22))
+        y += _ROW_H
+    # 表尾声明区：不是数据行，也不是整行冒号注记
+    blocks.extend(
+        [
+            _block("f1", "特殊关系确认：否", 75.5, 486.5, 138.5, 500.5),
+            _block("f2", "报关人员", 41.5, 512.0, 74.0, 522.0),
+            _block(
+                "f3",
+                "兹声明对以上内容承担如实申报、依法纳税之法律责任",
+                371.5,
+                510.5,
+                556.5,
+                522.5,
+            ),
+            _block("f4", "海关批注及签章", 568.0, 512.0, 623.5, 522.0),
+        ]
+    )
+    return blocks
+
+
+def footer_like_document() -> DocumentIR:
+    blocks = footer_like_blocks()
+    return DocumentIR(
+        document_id="d-footer",
+        file_id="f-footer",
+        filename="footer.pdf",
+        media_type="application/pdf",
+        pages=[Page(page_number=1, width=1200, height=800, blocks=blocks)],
+        raw_text="",
+    )
+
+
 def _kv(sheet, key: str) -> str | None:
     for item in sheet.key_values:
         if item.key == key:
@@ -168,6 +288,79 @@ class TestReconstructPeninsulaLike:
         sheet = classify_sheet(document.sheets[0], filename="scan.pdf")
         assert sheet.role == "draft"
         assert sheet.consume == "primary"
+
+
+class TestEntryListReconstruct:
+    """#82 进境备案清单：邻列漂移配对 / 键内信用代码 / 紧凑日期 / 词表标签防并。"""
+
+    def _sheet(self) -> Sheet:
+        document = reconstruct_document(entry_list_like_document())
+        return document.sheets[0]
+
+    def test_adjacent_column_values_pair_with_drifted_labels(self) -> None:
+        pairs = {item.key: item.value for item in self._sheet().key_values}
+        # 值漂一列（标签 c3 / 值 c2）也能配上，不再抓右侧标签当值
+        assert pairs.get("进境关别（5354）") == "莲塘海关"
+        assert pairs.get("备案号") == "T5352W000228"
+
+    def test_compact_dates_pass_value_spec(self) -> None:
+        pairs = {item.key: item.value for item in self._sheet().key_values}
+        assert pairs.get("进境日期") == "20250814"
+        assert pairs.get("申报日期") == "20250813"
+
+    def test_label_with_uscc_keeps_pairing(self) -> None:
+        pairs = {item.key: item.value for item in self._sheet().key_values}
+        assert pairs.get(f"境内收货人（{_ENTRY_LIST_USCC}）") == "北岸（深圳）供应链有限公司"
+        assert pairs.get("境外发货人") == "NORTHWIND TRADING LIMITED"
+
+    def test_box_values_stay_clean(self) -> None:
+        pairs = {item.key: item.value for item in self._sheet().key_values}
+        assert pairs.get("包装种类（22）") == "纸制或纤维板制盒／箱"
+        assert pairs.get("件数") == "214"
+        assert pairs.get("毛重（千克）") == "1459.62"
+        assert pairs.get("净重（千克）") == "485"
+
+    def test_known_label_cell_not_merged_into_value_above(self) -> None:
+        cells = [cell for cell in self._sheet().cells if "随附单证及编号" in cell.value]
+        assert cells, "词表标签应保住自己的格子"
+        assert all("纸制" not in cell.value for cell in cells)
+
+    def test_head_maps_entry_list_fields(self) -> None:
+        from docparse.extraction.head_map import map_sheet_head
+
+        document = reconstruct_document(entry_list_like_document())
+        sheet = document.sheets[0]
+        assert sheet.role == "draft"
+        by_name = {field.name: field for field in map_sheet_head(sheet, document)}
+        assert by_name["tradeName"].value == "北岸（深圳）供应链有限公司"
+        # 键内信用代码路由进 tradeScc（#82），证据指向标签格
+        assert by_name["tradeScc"].value == _ENTRY_LIST_USCC
+        assert by_name["iePort"].value == "莲塘海关"
+        assert by_name["ieDate"].value == "20250814"
+        assert by_name["declDate"].value == "20250813"
+        assert by_name["manualNo"].value == "T5352W000228"
+        assert by_name["wrapType"].value == "纸制或纤维板制盒／箱"
+
+
+class TestFooterStop:
+    """#82 表尾声明区停扫：词表 footer token 命中即表体终点。"""
+
+    def test_footer_rows_do_not_enter_goods_table(self) -> None:
+        document = reconstruct_document(footer_like_document())
+        sheet = document.sheets[0]
+        assert sheet.tables, "商品表应重建"
+        table = sheet.tables[0]
+        assert len(table.rows) == 2
+        values = [value for row in table.rows for value in row.values()]
+        assert all("特殊关系确认" not in value for value in values)
+        assert all("报关人员" not in value for value in values)
+        assert all("如实申报" not in value for value in values)
+
+    def test_footer_cells_free_for_kv(self) -> None:
+        """声明区不再被表体占住，冒号声明可走同格 KV。"""
+        document = reconstruct_document(footer_like_document())
+        pairs = {item.key: item.value for item in document.sheets[0].key_values}
+        assert pairs.get("特殊关系确认") == "否"
 
 
 class TestReconstructGuards:

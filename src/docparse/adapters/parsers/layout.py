@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from docparse.domain.ir import Cell, KeyValue, Sheet, Table
+from docparse.domain.ir import BoundingBox, Cell, KeyValue, Sheet, Table
 from docparse.schema.loader import VocabValue, load_layout_vocab
 from docparse.schema.textnorm import fold_key
 
@@ -20,6 +20,8 @@ _DATETIME_FULL = re.compile(
     r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$"
 )
 _DATE_ONLY = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
+# 紧凑日期（#82）：OCR 常把日期回成无分隔符的 YYYYMMDD（如 20250813）。
+_DATE_COMPACT = re.compile(r"^\d{8}$")
 _DATETIME_LEFT = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2})?$")
 _TIME_FULL = re.compile(r"^\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?$")
 _NUMERIC = re.compile(r"^[\d.,]+$")
@@ -28,6 +30,8 @@ _NUMERIC = re.compile(r"^[\d.,]+$")
 _PLACEHOLDER = re.compile(r"^[\(（]\s*[\)）]")
 # 右向跳空取值：标签与值之间允许的空列上限（#64）。间距更大改这里。
 _RIGHT_SKIP_MAX = 2
+# 邻列兜底（#82）：标签与值的 bbox 水平重叠至少盖住窄盒的这么宽才配对。
+_ADJACENT_OVERLAP_RATIO = 0.5
 
 
 def _is_placeholder(text: str) -> bool:
@@ -75,6 +79,11 @@ def _detect_tables(cells: list[Cell]) -> list[Table]:
                 # 不进表体：进了既污染恒定列判定，又把格子占住让 same_cell
                 # 接不住（#67）。表体到此为止，注记行不标 occupied。
                 break
+            if _is_footer_row(by_row[body_row]):
+                # 表尾声明区（#82）：报关单固定尾部（特殊关系确认 / 报关人员 /
+                # 兹声明…）不是数据行。词表 table_footer_tokens 命中即停，
+                # 不进表体、不标 occupied，后面整段留给 KV / 不解析。
+                break
             used_rows.add(body_row)
             values_by_col = {c.column: c.value for c in by_row[body_row]}
             record = {
@@ -106,6 +115,23 @@ def _is_note_row(cells: list[Cell]) -> bool:
     if not non_empty:
         return False
     return all(_same_cell_colon(cell) is not None for cell in non_empty)
+
+
+def _is_footer_row(cells: list[Cell]) -> bool:
+    """表尾声明区行（#82）：任一格命中词表 table_footer_tokens 即表体终点。
+
+    报关单 / 备案清单固定尾部（特殊关系确认、报关人员、兹声明、海关批注
+    及签章…）混着冒号 KV、裸标签和签名，既不是数据行也不是整行注记；
+    「公式定价确认：」这类尾冒号格还拆不出 same_cell KV。按词停扫。
+    """
+    tokens = load_layout_vocab().table_footer_tokens
+    if not tokens:
+        return False
+    return any(
+        any(token in cell.value for token in tokens)
+        for cell in cells
+        if cell.value
+    )
 
 
 def _compose_headers(row_cells: list[Cell], extra_cells: list[Cell]) -> list[str]:
@@ -155,7 +181,7 @@ def _kv_norms() -> frozenset[str]:
     return frozenset(_norm_label(item) for item in _all_kv_keys())
 
 
-def _is_known_key(text: str) -> bool:
+def is_known_key(text: str) -> bool:
     cleaned = _label_text(text)
     if cleaned in _all_kv_keys():
         return True
@@ -340,9 +366,13 @@ def _matches_value_spec(text: str, spec: VocabValue) -> bool:
     if spec.type == "number":
         return _NUMERIC.fullmatch(stripped) is not None and any(ch.isdigit() for ch in stripped)
     if spec.type == "date":
-        return _DATE_ONLY.fullmatch(stripped) is not None
+        return _DATE_ONLY.fullmatch(stripped) is not None or (
+            _DATE_COMPACT.fullmatch(stripped) is not None
+        )
     if spec.type == "datetime":
-        return _DATETIME_FULL.fullmatch(stripped) is not None
+        return _DATETIME_FULL.fullmatch(stripped) is not None or (
+            _DATE_COMPACT.fullmatch(stripped) is not None
+        )
     if spec.type == "pattern":
         return re.fullmatch(spec.pattern or "", stripped) is not None
     return True
@@ -385,10 +415,10 @@ def _known_key_part(text: str) -> str | None:
     """整格或冒号左侧是词表键时，返回该键。"""
     stripped = text.strip()
     cleaned = _label_text(stripped)
-    if _is_known_key(cleaned):
+    if is_known_key(cleaned):
         return cleaned
     split = _split_colon(stripped)
-    if split and _is_known_key(split[0]):
+    if split and is_known_key(split[0]):
         return split[0]
     return None
 
@@ -423,6 +453,8 @@ def _value_below(
         return None
     below_row = _merge_bottom(cell) + 1
     other = by_pos.get((below_row, cell.column))
+    if other is None:
+        other = _adjacent_below(cell, below_row, by_pos)
     if other is None or other.address in occupied or not other.value:
         return None
     if _is_placeholder(other.value):
@@ -437,6 +469,43 @@ def _value_below(
         value_cell=other.address,
         strategy="below",
     )
+
+
+def _adjacent_below(
+    cell: Cell,
+    below_row: int,
+    by_pos: dict[tuple[int, int], Cell],
+) -> Cell | None:
+    """邻列兜底（#82）：OCR 伪格子列界随行漂移，标签和值会差一列。
+
+    只在两格都有 bbox（OCR 伪格子）时启用：值必须水平重叠在标签
+    正下方（重叠 ≥ 窄盒宽度一半），错位一格也能配上；xlsx 格子无
+    bbox，走不到这里，行为不变。两个邻列都有值时取重叠更大者。
+    """
+    if cell.bbox is None:
+        return None
+    candidates: list[tuple[float, Cell]] = []
+    for column in (cell.column - 1, cell.column + 1):
+        other = by_pos.get((below_row, column))
+        if other is None or other.bbox is None or not other.value:
+            continue
+        overlap = _x_overlap(cell.bbox, other.bbox)
+        if overlap <= 0:
+            continue
+        narrower = min(
+            cell.bbox.x1 - cell.bbox.x0,
+            other.bbox.x1 - other.bbox.x0,
+            1.0,
+        )
+        if overlap >= narrower * _ADJACENT_OVERLAP_RATIO:
+            candidates.append((overlap, other))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _x_overlap(left: BoundingBox, right: BoundingBox) -> float:
+    return min(left.x1, right.x1) - max(left.x0, right.x0)
 
 
 def _scan_right(
@@ -466,7 +535,7 @@ def _value_right(
         return None
     text = cell.value.strip()
     key = _key_text(text)
-    if not (_ends_with_colon(text) or _is_known_key(key)):
+    if not (_ends_with_colon(text) or is_known_key(key)):
         return None
     other = _scan_right(cell, by_pos)
     if other is None or other.address in occupied:

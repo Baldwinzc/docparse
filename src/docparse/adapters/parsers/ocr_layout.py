@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from docparse.adapters.parsers.layout import split_sheet
+from docparse.adapters.parsers.layout import is_known_key, split_sheet
 from docparse.domain.ir import BoundingBox, Cell, DocumentIR, Page, Sheet, TextBlock
 from docparse.extraction.sheet_role import classify_sheets
 
@@ -367,6 +367,10 @@ def _should_merge(
 ) -> bool:
     """品名 / 规格跨行：下一行几乎只有这一列，且紧贴上一格。"""
     if row_gap > 1:
+        return False
+    # 词表标签不当续行（#82）：整格文本是框表键（如「随附单证及编号」）
+    # 的是下一组标签，不是品名换行——并进去会污染上一格的值。
+    if is_known_key(other.block.text.strip()):
         return False
     limit = max(members_height.height * _MERGE_HEIGHT_RATIO, _ROW_GAP_MIN)
     if other.bbox.y0 - members_height.bbox.y1 > limit:

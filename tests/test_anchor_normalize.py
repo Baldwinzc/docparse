@@ -67,6 +67,15 @@ def test_strip_trailing_code_variants() -> None:
     assert strip_trailing_code("监管方式") == "监管方式"
 
 
+def test_fold_key_strips_long_label_codes() -> None:
+    """#82 备案清单把 18 位信用代码印在标签里；4/6/10/18 位码同一条路剥。"""
+    assert fold_key("境内收货人（91440300MA5FETXT25）") == fold_key("境内收货人")
+    assert fold_key("消费使用单位（91440300MA5FETXT25）") == fold_key("消费使用单位")
+    assert fold_key("进境关别（5354）") == fold_key("进境关别")
+    # 括号里不是字母数字的仍不剥
+    assert fold_key("贸易国（地区）") != fold_key("贸易国")
+
+
 def test_fold_spaced_keeps_token_boundaries() -> None:
     assert fold_spaced("Unit Price") == "unit price"
     assert fold_spaced("毛重\n（公斤）") == "毛重(公斤)"
@@ -196,6 +205,66 @@ def test_name_plus_trailing_code_still_splits() -> None:
     )
     by_name = _by_name(map_sheet_head(document.sheets[0], document))
     assert by_name["tradeName"].value == "惠州市恒德信精密科技有限公司"
+    assert by_name["tradeCode"].value == "441394164D"
+
+
+# ---- 键内代码路由（#82：标签自带信用代码 / 海关码） ----
+
+
+def _entry_list_party_sheet(sheet) -> None:
+    sheet["A1"] = "中华人民共和国海关进境货物备案清单"
+    sheet["A3"] = "境内收货人（91440300MA5EXAMP01）"
+    sheet["A4"] = "北岸（深圳）供应链有限公司"
+    sheet["A7"] = "消费使用单位（91440300MA5EXAMP01）"
+    sheet["A8"] = "北岸（深圳）供应链有限公司"
+
+
+def test_label_uscc_routes_to_scc_field() -> None:
+    document = parse_excel(
+        _workbook({"进境清单": _entry_list_party_sheet}),
+        file_id="entry",
+        filename="entry.xlsx",
+    )
+    by_name = _by_name(map_sheet_head(document.sheets[0], document))
+    assert by_name["tradeName"].value == "北岸（深圳）供应链有限公司"
+    assert by_name["tradeScc"].value == "91440300MA5EXAMP01"
+    assert by_name["ownerName"].value == "北岸（深圳）供应链有限公司"
+    assert by_name["ownerScc"].value == "91440300MA5EXAMP01"
+    # 证据指向标签格（码在标签里，不在值里）
+    scc = by_name["tradeScc"]
+    assert all("A3" in item.cell for item in scc.evidence)
+
+
+def test_label_customs_code_routes_to_code_field() -> None:
+    def sheet_fill(sheet) -> None:
+        sheet["A1"] = "中华人民共和国海关出口货物报关单"
+        sheet["A3"] = "境内发货人（445366014J）"
+        sheet["A4"] = "北岸（深圳）供应链有限公司"
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": sheet_fill}),
+        file_id="entry10",
+        filename="entry10.xlsx",
+    )
+    by_name = _by_name(map_sheet_head(document.sheets[0], document))
+    assert by_name["tradeName"].value == "北岸（深圳）供应链有限公司"
+    assert by_name["tradeCode"].value == "445366014J"
+
+
+def test_label_code_does_not_double_route_when_value_has_code() -> None:
+    """值里已拆出同一目标时，键内码不重复写（值证据优先）。"""
+
+    def sheet_fill(sheet) -> None:
+        sheet["A1"] = "中华人民共和国海关出口货物报关单"
+        sheet["A3"] = "境内发货人（445366014J）"
+        sheet["A4"] = "北岸（深圳）供应链有限公司441394164D"
+
+    document = parse_excel(
+        _workbook({"一般贸易出口": sheet_fill}),
+        file_id="dup",
+        filename="dup.xlsx",
+    )
+    by_name = _by_name(map_sheet_head(document.sheets[0], document))
     assert by_name["tradeCode"].value == "441394164D"
 
 
@@ -334,6 +403,42 @@ def test_issue66_aliases_present() -> None:
     assert "申报总价" in anchors["declTotal"]
     assert "金额" in anchors["declTotal"]
     assert "目的国" in anchors["destinationCountry"]
+
+
+def test_issue82_entry_mirror_aliases_present() -> None:
+    """进境（进口）镜像叫法：fields.yaml 锚点与 layout_vocab 同步收（#82）。"""
+    schema = load_schema()
+    anchors = {spec.name: spec.anchors for spec in schema.head}
+    assert "境内收货人" in anchors["tradeName"]
+    assert "进境关别" in anchors["iePort"]
+    assert "进境日期" in anchors["ieDate"]
+    assert "启运国（地区）" in anchors["cusTradeCountry"]
+    vocab = load_layout_vocab()
+    ie_date = next(group for group in vocab.box if group.id == "ie_date")
+    assert any(alias.text == "进境日期" for alias in ie_date.aliases)
+
+
+def test_compact_date_passes_value_spec() -> None:
+    """OCR 紧凑日期（YYYYMMDD）要能过 date / datetime 值域（#82）。"""
+    from docparse.adapters.parsers.layout import _matches_value_spec
+    from docparse.schema.loader import VocabValue
+
+    date_spec = VocabValue(type="date")
+    datetime_spec = VocabValue(type="datetime")
+    assert _matches_value_spec("20250813", date_spec)
+    assert _matches_value_spec("20250813", datetime_spec)
+    assert _matches_value_spec("2025-08-13", date_spec)
+    # 7 位 / 9 位不是日期，别放进值域
+    assert not _matches_value_spec("2025081", date_spec)
+    assert not _matches_value_spec("12345678901", datetime_spec)
+
+
+def test_table_footer_tokens_present() -> None:
+    """表尾声明区停扫词在词表里声明（#82），新尾部文案只改 YAML。"""
+    vocab = load_layout_vocab()
+    assert "特殊关系确认" in vocab.table_footer_tokens
+    assert "如实申报" in vocab.table_footer_tokens
+    assert "海关批注" in vocab.table_footer_tokens
 
 
 def test_vocab_gained_synced_aliases() -> None:

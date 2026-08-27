@@ -104,6 +104,12 @@ port_mapping:
     status: decided
     notes: 标准表「进/出口口岸」。恒信草单标签是「出境关别」。参考 JSON 把莲塘写进 customMaster，目录不跟着错。
 
+  - draft_label: 进境关别
+    field: iePort
+    code_table: 海关口岸代码
+    status: decided
+    notes: 进境单据叫「进境关别（5354）」，同 iePort（#82，SJ25084373 备案清单）。标签自带四位关区码，值是关区名。
+
   - draft_label: 离境口岸
     field: ciqEntyPortCode
     code_table: 入境/离境口岸
@@ -373,11 +379,11 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [境内发货人, 境内收发货人, 卖方SELLER, 卖方, SELLER, 卖 方, 经营单位]
+    anchors: [境内发货人, 境内收发货人, 境内收货人, 卖方SELLER, 卖方, SELLER, 卖 方, 经营单位]
     head_map: trailing_code
     split_target: tradeCode
     scc_target: tradeScc
-    notes: 框表常与海关代码写在同一格，末尾 10 位拆给 tradeCode。纯代码值路由（#66）：值整体是 10 位海关码写 tradeCode、18 位信用代码写 tradeScc，name 留空标 pure_code_value。经营单位为 GSC 旧叫法。
+    notes: 框表常与海关代码写在同一格，末尾 10 位拆给 tradeCode。纯代码值路由（#66）：值整体是 10 位海关码写 tradeCode、18 位信用代码写 tradeScc，name 留空标 pure_code_value。经营单位为 GSC 旧叫法。境内收货人为进境单据叫法（#82），标签可带（18 位信用代码）尾码，键内代码路由进 tradeScc。
 
   - name: tradeCode
     display_name: 10位境内收发货人海关代码
@@ -464,9 +470,9 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [出境关别, 出口口岸, 进口口岸, 进/出口口岸]
+    anchors: [出境关别, 进境关别, 出口口岸, 进口口岸, 进/出口口岸]
     code_table: 海关口岸代码
-    notes: md 补。草单「出境关别」进本字段，不要写进 customMaster。
+    notes: md 补。草单「出境关别」进本字段，不要写进 customMaster。进境关别为进境单据叫法（#82），同字段。
 
   - name: ciqEntyPortCode
     display_name: 入境/离境口岸代码
@@ -501,8 +507,8 @@ head:
     layout: box_kv
     value_type: date
     sources: [customs_declaration]
-    anchors: [出口日期, 进口日期, 进/出口日期]
-    notes: md 补。不要和「申报日期」混成一个字段。
+    anchors: [出口日期, 进口日期, 进境日期, 进/出口日期]
+    notes: md 补。不要和「申报日期」混成一个字段。进境日期为进境单据叫法（#82）。
 
   - name: cusTrafMode
     display_name: 运输方式代码
@@ -594,9 +600,9 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [运抵国（地区）, 运抵国(地区), 启运国, 运抵国]
+    anchors: [运抵国（地区）, 运抵国(地区), 启运国（地区）, 启运国, 运抵国]
     code_table: 国别
-    notes: 出口对应运抵国。
+    notes: 出口对应运抵国，进境对应启运国（地区）（#82：fold 是整词相等，「启运国（地区）」与短写「启运国」各收一条）。
 
   - name: wrapType
     display_name: 包装种类代码
