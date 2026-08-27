@@ -985,3 +985,203 @@ def test_duoke_sample_keeps_four_items() -> None:
     items = map_document_goods(document)
     assert len(items) == 4
     assert [item.value_of("gno") for item in items] == ["1", "2", "3", "4"]
+
+
+# ---- 标准报关单三行一项目（#84：复合列拆分） ----
+
+
+def _compound_three_row(sheet) -> None:
+    """标准报关单形状：一行项目三物理行；HS+品名粘连；复合数量/单价列。
+
+    行A 主行（项号/HS+品名/法定数量/单价/原产国名/目的国名/目的地双码）
+    行B 规格第1行 + 总价 + 国别代码 + 目的地续
+    行C 规格第2行 + 成交数量 + 币制
+    item1 品名落「商品名称及规格型号」列，item2 落「商品编号」列（OCR 列漂移两方向）。
+    """
+    sheet["A1"] = "中华人民共和国海关进境货物备案清单"
+    headers = [
+        ("A3", "项号"),
+        ("B3", "商品编号"),
+        ("C3", "商品名称及规格型号"),
+        ("D3", "数量及单位"),
+        ("E3", "单价／总价／币制"),
+        ("F3", "原产国（地区）"),
+        ("G3", "最终目的国（地区）"),
+        ("H3", "境内目的地"),
+    ]
+    for address, text in headers:
+        sheet[address] = text
+    # item 1：三行；HS+品名在名称列
+    sheet["A4"] = 1
+    sheet["C4"] = "1905310000示例黄油酥饼（饼干）"
+    sheet["D4"] = "48千克"
+    sheet["E4"] = "66.8300"
+    sheet["F4"] = "英国"
+    sheet["G4"] = "中国"
+    sheet["H4"] = "（44536／440308）示例综合保税区"
+    sheet["C5"] = "4｜3｜示例成分44％，示例油脂33％"
+    sheet["E5"] = "16039.20"
+    sheet["F5"] = "(GBR)"
+    sheet["G5"] = "(CHN)"
+    sheet["H5"] = "（一期）／示例区"
+    sheet["C6"] = "糖17％｜200克X30盒／箱"
+    sheet["D6"] = "240盒"
+    sheet["E6"] = "港币"
+    # item 2：两行（规格单行）；HS+品名在编号列
+    sheet["A7"] = 2
+    sheet["B7"] = "1905900000示例巧克力曲奇"
+    sheet["D7"] = "24千克"
+    sheet["E7"] = "76.8800"
+    sheet["F7"] = "英国"
+    sheet["G7"] = "中国"
+    sheet["H7"] = "（44536／440308）示例综合保税区"
+    sheet["C8"] = "4｜3｜示例可可45％"
+    sheet["E8"] = "9225.60"
+    sheet["F8"] = "(GBR)"
+    sheet["G8"] = "(CHN)"
+    sheet["H8"] = "（一期）／示例区"
+    sheet["D9"] = "120盒"
+    sheet["E9"] = "港币"
+    for row in sheet.iter_rows(min_row=3, max_row=9, min_col=1, max_col=8):
+        for cell in row:
+            cell.border = _thin()
+
+
+def test_compound_three_row_item_full_split() -> None:
+    document = parse_excel(
+        _workbook({"进境清单": _compound_three_row}),
+        file_id="compound",
+        filename="compound.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 2
+    first = _values(items[0])
+    # HS 从粘连品名拆出（名称列方向）
+    assert first["codeTs"] == "1905310000"
+    assert first["gname"] == "示例黄油酥饼（饼干）"
+    # 规格两行无缝拼接（全角 ｜ 也是规格形状）
+    assert first["gmodel"] == "4｜3｜示例成分44％，示例油脂33％糖17％｜200克X30盒／箱"
+    # 法定/成交数量拆开；法定千克同值补净重
+    assert first["qty1"] == "48"
+    assert first["unit1"] == "千克"
+    assert first["customNetWt"] == "48"
+    assert first["gqty"] == "240"
+    assert first["gunit"] == "盒"
+    # 叠列：行A 单价 / 行B 总价 / 行C 币制
+    assert first["declPrice"] == "66.8300"
+    assert first["declTotal"] == "16039.20"
+    assert first["tradeCurr"] == "港币"
+    # 国别名称进字段，行B (代码) 是回声不覆盖
+    assert first["cusOriginCountry"] == "英国"
+    assert first["destinationCountry"] == "中国"
+    # 境内目的地前缀双码拆开
+    assert first["districtCode"] == "44536"
+    assert first["ciqDestCode"] == "440308"
+
+
+def test_compound_two_row_item_splits_joined_hs_in_code_column() -> None:
+    document = parse_excel(
+        _workbook({"进境清单": _compound_three_row}),
+        file_id="compound2",
+        filename="compound2.xlsx",
+    )
+    items = map_document_goods(document)
+    second = _values(items[1])
+    # HS+品名粘连落在编号列：HS 留 codeTs，余文经 split_target 发射给 gname
+    assert second["codeTs"] == "1905900000"
+    assert second["gname"] == "示例巧克力曲奇"
+    assert second["gmodel"] == "4｜3｜示例可可45％"
+    assert second["qty1"] == "24"
+    assert second["unit1"] == "千克"
+    assert second["customNetWt"] == "24"
+    assert second["gqty"] == "120"
+    assert second["gunit"] == "盒"
+    assert second["declTotal"] == "9225.60"
+    assert second["tradeCurr"] == "港币"
+
+
+def test_name_wrap_without_spec_shape_is_dropped() -> None:
+    """纯文字名称换行（无 | 无 %）且 gmodel 空：不当规格，也不并名（现状保持）。"""
+
+    def sheet_fill(sheet) -> None:
+        sheet["A1"] = "中华人民共和国海关进境货物备案清单"
+        sheet["A3"] = "项号"
+        sheet["B3"] = "商品编号"
+        sheet["C3"] = "商品名称及规格型号"
+        sheet["A4"] = 1
+        sheet["B4"] = "8708100000"
+        sheet["C4"] = "前保险杠下部装饰板"
+        sheet["C5"] = "第二行名称换行文字"
+        for row in sheet.iter_rows(min_row=3, max_row=5, min_col=1, max_col=3):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"进境清单": sheet_fill}),
+        file_id="wrap",
+        filename="wrap.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    assert items[0].value_of("gname") == "前保险杠下部装饰板"
+    assert items[0].value_of("gmodel") is None
+
+
+def test_single_code_district_prefix_stays_raw() -> None:
+    """单码前缀（当纳利 '(44199/)东莞/'）不拆，保持原值。"""
+
+    def sheet_fill(sheet) -> None:
+        sheet["A1"] = "报关预录入单"
+        sheet["A3"] = "项号"
+        sheet["B3"] = "商品编号"
+        sheet["C3"] = "商品名称及规格型号"
+        sheet["H3"] = "境内货源地"
+        sheet["A4"] = 1
+        sheet["B4"] = "4901990000"
+        sheet["C4"] = "外文书籍"
+        sheet["H4"] = "(44199/)东莞/"
+        for row in sheet.iter_rows(min_row=3, max_row=4, min_col=1, max_col=8):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"报关预录入单": sheet_fill}),
+        file_id="single-code",
+        filename="single-code.xlsx",
+    )
+    items = map_document_goods(document)
+    assert items[0].value_of("districtCode") == "(44199/)东莞/"
+    assert items[0].value_of("ciqDestCode") is None
+
+
+def test_bare_number_and_unit_stack_not_split() -> None:
+    """当纳利形状（裸数字数量 + 纯单位堆叠）不走法定/成交拆分。"""
+
+    def sheet_fill(sheet) -> None:
+        sheet["A1"] = "报关预录入单"
+        sheet["A3"] = "项号"
+        sheet["B3"] = "商品编号"
+        sheet["C3"] = "商品名称及规格型号"
+        sheet["D3"] = "数量及单位"
+        sheet["A4"] = 1
+        sheet["B4"] = "4901990000"
+        sheet["C4"] = "外文书籍"
+        sheet["D4"] = 17432
+        sheet["D5"] = 0
+        sheet["A6"] = 0
+        sheet["D6"] = "千克"
+        for row in sheet.iter_rows(min_row=3, max_row=6, min_col=1, max_col=4):
+            for cell in row:
+                cell.border = _thin()
+
+    document = parse_excel(
+        _workbook({"报关预录入单": sheet_fill}),
+        file_id="bare",
+        filename="bare.xlsx",
+    )
+    items = map_document_goods(document)
+    values = _values(items[0])
+    assert values["gqty"] == "17432"
+    assert values["gunit"] == "千克"
+    assert "qty1" not in values
+    assert "unit1" not in values

@@ -11,6 +11,14 @@ from docparse.schema.loader import FieldSpec, Schema, load_schema
 from docparse.schema.textnorm import fold_key, fold_spaced
 
 _LEADING_HS = re.compile(r"^(\d{8,10})")
+# 数量+单位粘连值（#84 标准报关单「数量及单位」复合列）：'48千克' / '240盒'。
+_QTY_UNIT = re.compile(r"^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,4})$")
+# 规格形状（#84）：全角 ｜／％ 归一后含 | 或 % 即规格行；纯文字名称换行不算。
+_SPEC_SHAPE = re.compile(r"[|%]")
+_WIDTH_FOLD = str.maketrans("｜％", "|%")
+# 境内目的地前缀双码（#84）：'（44536／440308）深圳盐田综合保税区'。
+# 两码都非空才拆；当纳利 '(44199/)东莞/' 第二码空，保持原值。
+_DISTRICT_CODES = re.compile(r"^[（(]\s*(\d{4,6})\s*[／/]\s*(\d{4,6})\s*[)）]")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
 # PDF 伪 sheet 名是页号（#62 reconstruct）。xlsx 草单名不是数字，不接续。
@@ -100,6 +108,20 @@ def _map_sheet_goods(
             continue
         item = _map_row(row, row_index, table, mapping, sheet, document, score)
         if item is None:
+            # 无身份列但有商品值（#84：标准报关单规格单行的 item，行C 只剩
+            # 成交数量/币制）。有项号列（海关货表）才并上一件；箱单 / 发票
+            # 无项号列，无身份行照旧丢弃。
+            identityless = _map_row(
+                row, row_index, table, mapping, sheet, document, score,
+                require_identity=False,
+            )
+            if (
+                identityless is not None
+                and items
+                and _is_continuation(identityless, items[-1], mapping)
+                and _has_value_fields(identityless)
+            ):
+                _merge_continuation(items[-1], identityless)
             continue
         if _is_continuation(item, items[-1] if items else None, mapping):
             if not items:
@@ -107,7 +129,28 @@ def _map_sheet_goods(
             _merge_continuation(items[-1], item)
             continue
         items.append(item)
+    for item in items:
+        _postprocess_item(item, schema)
     return items
+
+
+_VALUE_FIELDS = frozenset(
+    {
+        "gqty",
+        "gunit",
+        "qty1",
+        "unit1",
+        "declPrice",
+        "declTotal",
+        "tradeCurr",
+        "customNetWt",
+        "customGrossWet",
+    }
+)
+
+
+def _has_value_fields(item: GoodsItem) -> bool:
+    return any(name in item.fields for name in _VALUE_FIELDS)
 
 
 def best_goods_table(sheet: Sheet, schema: Schema) -> Table | None:
@@ -205,6 +248,7 @@ def _map_row(
     sheet: Sheet,
     document: DocumentIR,
     score: int,
+    require_identity: bool = True,
 ) -> GoodsItem | None:
     fields: dict[str, ExtractedField] = {}
     for header, spec in mapping.items():
@@ -212,13 +256,15 @@ def _map_row(
         if not raw:
             continue
         cell = _body_cell(table, header, row_index)
-        field = _emit(spec, raw, header, cell, sheet, document)
-        if field is not None:
-            fields[spec.name] = field
+        for field in _emit(spec, raw, header, cell, sheet, document):
+            if field is not None and field.name not in fields:
+                fields[field.name] = field
     if not fields:
         return None
     # 续行常只有 gname（申报要素落在品名列）；无身份列的行仍丢。
-    if not any(name in fields for name in ("gno", "codeTs", "gname")):
+    if require_identity and not any(
+        name in fields for name in ("gno", "codeTs", "gname")
+    ):
         return None
     return GoodsItem(
         fields=fields,
@@ -237,17 +283,47 @@ def _emit(
     cell: str | None,
     sheet: Sheet,
     document: DocumentIR,
-) -> ExtractedField | None:
+) -> list[ExtractedField]:
     value = raw
     status = FieldStatus.ACCEPTED
+    remainder = ""
     if spec.goods_map == "leading_hs":
         match = _LEADING_HS.match(raw)
         if match:
             value = match.group(1)
+            remainder = raw[match.end() :].strip()
         else:
             status = FieldStatus.NEEDS_REVIEW
     elif spec.goods_map == "raw_review":
         status = FieldStatus.NEEDS_REVIEW
+    fields = [_accepted(spec, value, header, cell, sheet, document, status=status)]
+    # HS+品名粘连（#84）：编号列拆出 HS 后余文非空 → 发射到 split_target
+    # （同 head_map trailing_code 机制）。余文空 / 无目标只出本字段。
+    if remainder and spec.split_target:
+        target = _spec_target(spec)
+        if target is not None:
+            fields.append(
+                _accepted(target, remainder, header, cell, sheet, document)
+            )
+    return fields
+
+
+def _spec_target(spec: FieldSpec) -> FieldSpec | None:
+    """split_target 指向的字段目录项（#84）。无目标返回 None。"""
+    if not spec.split_target:
+        return None
+    return load_schema().field(spec.split_target)
+
+
+def _accepted(
+    spec: FieldSpec,
+    value: str,
+    header: str,
+    cell: str | None,
+    sheet: Sheet,
+    document: DocumentIR,
+    status: FieldStatus = FieldStatus.ACCEPTED,
+) -> ExtractedField:
     return ExtractedField(
         name=spec.name,
         display_name=spec.display_name,
@@ -267,6 +343,102 @@ def _emit(
             )
         ],
     )
+
+
+def _postprocess_item(item: GoodsItem, schema: Schema) -> None:
+    """续行合并后的逐项整形（#84）：粘连拆分、复合数量拆分、目的地双码。"""
+    _split_joined_name(item, schema)
+    _split_stacked_qty(item, schema)
+    _split_district_codes(item, schema)
+
+
+def _split_joined_name(item: GoodsItem, schema: Schema) -> None:
+    """HS+品名粘连落在品名列（列归属漂移）：codeTs 空且品名以 HS 开头 → 拆。"""
+    if _usable_hs(item.value_of("codeTs")):
+        return
+    gname = item.fields.get("gname")
+    raw = (gname.value if gname else "") or ""
+    match = _LEADING_HS.match(raw.strip())
+    if match is None:
+        return
+    remainder = raw.strip()[match.end() :].strip()
+    if not remainder:
+        return
+    code_spec = schema.field("codeTs")
+    if code_spec is None:
+        return
+    gname.value = remainder
+    gname.normalized_value = remainder
+    item.fields["codeTs"] = _retarget(gname, "codeTs", code_spec.display_name)
+    item.fields["codeTs"].value = match.group(1)
+    item.fields["codeTs"].normalized_value = match.group(1)
+
+
+def _split_stacked_qty(item: GoodsItem, schema: Schema) -> None:
+    """「数量及单位」复合列（#84）：法定数量（行A）+成交数量（行C）拆开。
+
+    形状闸：gqty 值带单位后缀、gunit 值是「数字+单位」——当纳利（#68）
+    是「裸数字+纯单位」堆叠，形状不符不动。重量单位方是法定数量
+    （qty1/unit1，unit1 千克时同值补 customNetWt），另一方是成交数量。
+    """
+    qty_field = item.fields.get("gqty")
+    unit_field = item.fields.get("gunit")
+    qty_match = _QTY_UNIT.match((qty_field.value if qty_field else "") or "")
+    unit_match = _QTY_UNIT.match((unit_field.value if unit_field else "") or "")
+    if qty_field is None or qty_match is None or unit_field is None or unit_match is None:
+        return
+    statutory, deal = qty_match, unit_match
+    statutory_is_weight = _is_weight_unit(statutory.group(2), schema)
+    deal_is_weight = _is_weight_unit(deal.group(2), schema)
+    if deal_is_weight and not statutory_is_weight:
+        statutory, deal = deal, statutory
+    # 拆分后法定侧是否重量单位（两码都重量 / 唯一重量码都在法定侧）。
+    statutory_weight = _is_weight_unit(statutory.group(2), schema)
+    qty1_spec = schema.field("qty1")
+    unit1_spec = schema.field("unit1")
+    net_spec = schema.field("customNetWt")
+    if qty1_spec is not None:
+        item.fields["qty1"] = _retarget(qty_field, "qty1", qty1_spec.display_name)
+        item.fields["qty1"].value = statutory.group(1)
+        item.fields["qty1"].normalized_value = statutory.group(1)
+    if unit1_spec is not None:
+        item.fields["unit1"] = _retarget(qty_field, "unit1", unit1_spec.display_name)
+        item.fields["unit1"].value = statutory.group(2)
+        item.fields["unit1"].normalized_value = statutory.group(2)
+    if (
+        net_spec is not None
+        and statutory_weight
+        and not (item.value_of("customNetWt") or "").strip()
+    ):
+        item.fields["customNetWt"] = _retarget(
+            qty_field, "customNetWt", net_spec.display_name
+        )
+        item.fields["customNetWt"].value = statutory.group(1)
+        item.fields["customNetWt"].normalized_value = statutory.group(1)
+    qty_field.value = deal.group(1)
+    qty_field.normalized_value = deal.group(1)
+    unit_field.value = deal.group(2)
+    unit_field.normalized_value = deal.group(2)
+
+
+def _split_district_codes(item: GoodsItem, schema: Schema) -> None:
+    """境内目的地前缀双码（#84）：'（44536／440308）地名' → districtCode + ciqDestCode。
+
+    两码都非空才拆；单码前缀（当纳利 '(44199/)东莞/'）保持原值。
+    """
+    district = item.fields.get("districtCode")
+    raw = (district.value if district else "") or ""
+    match = _DISTRICT_CODES.match(raw.strip())
+    if district is None or match is None:
+        return
+    ciq_spec = schema.field("ciqDestCode")
+    if ciq_spec is None:
+        return
+    district.value = match.group(1)
+    district.normalized_value = match.group(1)
+    item.fields["ciqDestCode"] = _retarget(district, "ciqDestCode", ciq_spec.display_name)
+    item.fields["ciqDestCode"].value = match.group(2)
+    item.fields["ciqDestCode"].normalized_value = match.group(2)
 
 
 def _is_total_row(
@@ -376,13 +548,19 @@ def _merge_continuation(master: GoodsItem, other: GoodsItem) -> None:
 
 
 def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None:
-    """已占字段上的续行值：申报要素形状补 gmodel；叠列数字补总价、非数字补币制/单位。"""
+    """已占字段上的续行值：品名列续行并 gmodel；叠列数字补总价、非数字补币制/单位。"""
     for field in leftovers:
         text = (field.value or "").strip()
         if not text:
             continue
-        if text.count("|") >= 2 and not master.value_of("gmodel"):
-            master.fields["gmodel"] = _retarget(field, "gmodel", "规格型号")
+        if field.name == "gname" and _spec_like(text, master.value_of("gmodel")):
+            # 规格续行（#84）：行B/行C 的规格文本并进 gmodel；硬换行无缝拼接
+            # （'白砂'+'糖17％'='白砂糖17％'）。形状看归一化文本（全角 ｜ 算）。
+            existing = master.value_of("gmodel") or ""
+            merged = _retarget(field, "gmodel", "规格型号")
+            merged.value = existing + text
+            merged.normalized_value = existing + text
+            master.fields["gmodel"] = merged
             continue
         if field.name == "declPrice":
             if _as_number(text) is not None and not master.value_of("declTotal"):
@@ -391,6 +569,13 @@ def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None
                 master.fields["tradeCurr"] = _retarget(field, "tradeCurr", "币制")
         elif field.name == "gqty" and _as_number(text) is None and not master.value_of("gunit"):
             master.fields["gunit"] = _retarget(field, "gunit", "成交单位")
+
+
+def _spec_like(text: str, existing_gmodel: str | None) -> bool:
+    """规格形状：归一化（｜→|、％→%）后含 | 或 %；或 gmodel 已有值（续行拼接）。"""
+    if (existing_gmodel or "").strip():
+        return True
+    return _SPEC_SHAPE.search(text.translate(_WIDTH_FOLD)) is not None
 
 
 def _retarget(field: ExtractedField, name: str, display_name: str) -> ExtractedField:

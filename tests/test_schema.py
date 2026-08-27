@@ -69,6 +69,7 @@ JSON_GOODS = {
     "cusOriginCountry",
     "destinationCountry",
     "districtCode",
+    "ciqDestCode",
     "dutyMode",
     "exgVersion",
     "customGrossWet",
