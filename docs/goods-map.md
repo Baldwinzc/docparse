@@ -4,6 +4,7 @@
 
 ```bash
 python -m docparse.cli goods /绝对路径/表.xlsx
+python -m docparse.cli goods /绝对路径/草单.pdf
 ```
 
 本文件只回答「已经打好角色的货表，怎么收成一张货表」。不切格子（layout）、不认角色（#16）、不拼整单（#19）、不转 code（#14）。
@@ -65,6 +66,12 @@ Sheet.tables + consume
 | `contract` | 0 | 合同货表常缺税号，不当默认主表 |
 
 有草单：草单赢。无草单：HS + 申报要素的箱单通常压过只有品名和价的发票。
+
+## 同角色多页接续（#23）
+
+PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，不能按行序对齐（会把 11 补进第 1 件）。
+
+`goods_master.concat_same_role` 默认 true：主表角色相同、且 sheet 名都是页号（`1` / `2`，#62 伪 sheet）时，按文档顺序拼成一张货表。xlsx 具名草单（「一般贸易出口」+「Sheet1」）仍只取主表，其它角色走下面的跨表补空。关掉接续把该键改 false。
 
 ## `goods_map`
 
@@ -132,6 +139,7 @@ Sheet.tables + consume
 | 千克行数量补值须≈净重、毛重补值须≥净重 | 内置规则，容差同 `qty_*` | 否 |
 | 千克行同表成交数量取净重（#75） | 内置规则；千克词表仍是 `weight_units` | 否 |
 | 新合计叫法（如 GRAND TOTAL） | `goods_master.total_row_tokens` | 否 |
+| 同角色多页不要接续（回到按行序补空） | `goods_master.concat_same_role: false` | 否 |
 | 续行落在其它已占字段且非申报要素形状 | `goods_map.py` `_route_leftovers` 补形状判定 | 是，通用规则 |
 | 三行以上叠列（四行一项） | 续行判定天然支持，验收补样本 | 否 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |

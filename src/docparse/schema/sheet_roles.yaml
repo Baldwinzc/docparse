@@ -84,6 +84,8 @@ roles:
           source: GSC 出仓备案清单 BOX
         - text: 境外收货人
           source: GSC 出仓备案清单 BOX
+        - text: 境外发货人
+          source: 进境备案清单 / 半岛扫描件 BOX（#23）
         - text: 生产销售单位
           source: 多科 / 当纳利草单 BOX
       headers:

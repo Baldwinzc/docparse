@@ -13,6 +13,8 @@ from docparse.schema.textnorm import fold_key, fold_spaced
 _LEADING_HS = re.compile(r"^(\d{8,10})")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
+# PDF 伪 sheet 名是页号（#62 reconstruct）。xlsx 草单名不是数字，不接续。
+_PAGE_SHEET_NAME = re.compile(r"^(sheet\s*\d+|\d+)$", re.IGNORECASE)
 
 
 def map_document_goods(
@@ -35,15 +37,35 @@ def map_document_goods(
     )
     if master_items[0].master_score < schema.goods_master.min_score:
         return []
-    merged = [deepcopy(item) for item in master_items]
+    same_role = [
+        (sheet, items) for sheet, items, _ in mapped if sheet.role == master_sheet.role
+    ]
+    concat_pages = schema.goods_master.concat_same_role and _concat_page_sheets(same_role)
+    if concat_pages:
+        # PDF 草单跨页：页号伪 sheet、项号 1–10 / 11–19 按文档顺序拼一张。
+        # xlsx 两张具名 draft（进料加工 + Sheet1）不走这里，仍只取主表。
+        merged = [deepcopy(item) for _, items in same_role for item in items]
+    else:
+        merged = [deepcopy(item) for item in master_items]
     if schema.goods_master.merge_supplement:
         for sheet, items, _ in mapped:
             if sheet is master_sheet:
+                continue
+            if concat_pages and sheet.role == master_sheet.role:
                 continue
             _merge_by_order(merged, items, schema)
     for item in merged:
         _prefer_net_as_qty(item, schema)
     return merged
+
+
+def _is_page_sheet(sheet: Sheet) -> bool:
+    return bool(_PAGE_SHEET_NAME.match(sheet.name.strip()))
+
+
+def _concat_page_sheets(same_role: list[tuple[Sheet, list[GoodsItem]]]) -> bool:
+    """同角色 ≥2 张且全是页号名 → 跨页接续。具名 xlsx draft 不接。"""
+    return len(same_role) > 1 and all(_is_page_sheet(sheet) for sheet, _ in same_role)
 
 
 def map_sheet_goods(

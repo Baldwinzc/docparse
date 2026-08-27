@@ -136,6 +136,7 @@ def test_schema_head_map_flags() -> None:
     assert schema.field("agentCode").parse is False
     assert "卖方SELLER" in schema.field("tradeName").anchors
     assert "Bill To" in schema.field("consignorEname").anchors
+    assert "境外发货人" in schema.field("consignorEname").anchors
     assert "合同号CONTRACT NO." in schema.field("contrNo").anchors
 
 
