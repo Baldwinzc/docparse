@@ -85,7 +85,7 @@ function fieldInput(spec, file) {
   input.name = spec.name;
   if (file) {
     input.type = "file";
-    input.accept = ".xlsx,.xls,.xlsm";
+    input.accept = ".xlsx,.xls,.xlsm,.pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp";
     input.required = true;
   } else {
     input.type = "text";
@@ -170,7 +170,7 @@ async function boot() {
   const spec = await fetch("/v1/schema").then((r) => r.json());
   catalog = spec;
   const box = $("fields");
-  box.appendChild(fieldInput({ name: "file", display_name: "xlsx" }, true));
+  box.appendChild(fieldInput({ name: "file", display_name: "文件" }, true));
   for (const item of spec.caller) box.appendChild(fieldInput(item, false));
 }
 
