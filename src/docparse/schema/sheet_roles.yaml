@@ -24,6 +24,8 @@ roles:
           source: 标题短写；本张恒信是全称
         - text: 出境备案清单
           source: GSC 出仓备案清单标题
+        - text: 进境备案清单
+          source: SJ25084373 进境货物备案清单标题（#82）；进境镜像，与出境备案清单同角色
         - text: 报关预录入单
           source: 当纳利草单 sheet 名
         - text: 报关单
@@ -86,6 +88,22 @@ roles:
           source: GSC 出仓备案清单 BOX
         - text: 境外发货人
           source: 进境备案清单 / 半岛扫描件 BOX（#23）
+        - text: 境内收货人
+          source: 进境备案清单 BOX（#82）；境内发货人的进境镜像
+        - text: 进境关别
+          source: 进境备案清单 BOX（#82）；出境关别的进境镜像
+        - text: 进境日期
+          source: 进境备案清单 BOX（#82）；出口日期的进境镜像
+        - text: 消费使用单位
+          source: 进境备案清单 BOX（#82）；生产销售单位的进境镜像
+        - text: 入境口岸
+          source: 进境备案清单 BOX（#82）；离境口岸的进境镜像
+        - text: 货物存放地点
+          source: 进境备案清单 BOX（#82）
+        - text: 启运港
+          source: 进境备案清单 BOX（#82）；指运港的进境镜像
+        - text: 经停港
+          source: 进境备案清单 BOX（#82）；指运港的进境镜像
         - text: 生产销售单位
           source: 多科 / 当纳利草单 BOX
       headers:

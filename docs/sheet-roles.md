@@ -8,7 +8,7 @@
 
 | 角色 | consume | 谁用 | #17 / #18 / #19 |
 |---|---|---|---|
-| `draft` | `primary` | 海关框表草单 / 出境备案清单 | 表头主源；主货表候选 |
+| `draft` | `primary` | 海关框表草单 / 出·进境备案清单 | 表头主源；主货表候选。进境镜像键（境内收货人 / 进境关别 / 进境日期 / 消费使用单位 / 入境口岸 / 启运港 / 经停港 / 货物存放地点）已收信号（#82） |
 | `declaration_list` | `primary` | 扁平海关表（表头混表头字段 + 货列） | 与 draft 同权：主货表加权 10、overwrite；表头经恒定列映射（`head_from_columns: true`，#67） |
 | `packing` | `supplement` | 箱单 | 只补空；核对件毛净 |
 | `invoice` | `supplement` | 发票 | 只补空 |

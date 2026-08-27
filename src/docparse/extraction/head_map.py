@@ -15,6 +15,8 @@ _TRAILING_CUSTOMS_CODE = re.compile(r"^(.*?)([A-Za-z0-9]{10})$")
 _CUSTOMS_CODE = re.compile(r"^[A-Z0-9]{10}$")
 _CREDIT_CODE = re.compile(r"^[A-Z0-9]{18}$")
 _CODE_SHELL = re.compile(r"^[（(]\s*([A-Za-z0-9]+)\s*[)）]$")
+# 键内代码路由（#82）：标签尾部的（10 位海关码 / 18 位信用代码）。
+_KEY_TRAILING_CODE = re.compile(r"[（(]\s*([A-Za-z0-9]{10}|[A-Za-z0-9]{18})\s*[)）]\Z")
 _SKIP_CONSUME = frozenset({"exclude"})
 _HEAD_LAYOUTS = frozenset({"box_kv"})
 _CALLER_PREFIX = "agent"
@@ -178,14 +180,41 @@ def _emit(
     if spec.head_map == "trailing_code":
         routed = _route_code_value(spec, raw, pair, sheet, document, schema)
         if routed is not None:
-            return routed
+            return _with_key_codes(spec, routed, pair, sheet, document, schema)
         name, code = _split_trailing_code(raw)
         fields = [_accepted(spec, name, pair, sheet, document)]
         target = schema.field(spec.split_target or "")
         if code and target is not None:
             fields.append(_accepted(target, code, pair, sheet, document))
-        return fields
+        return _with_key_codes(spec, fields, pair, sheet, document, schema)
     return [_accepted(spec, raw, pair, sheet, document)]
+
+
+def _with_key_codes(
+    spec: FieldSpec,
+    fields: list[ExtractedField],
+    pair: KeyValue,
+    sheet: Sheet,
+    document: DocumentIR,
+    schema: Schema,
+) -> list[ExtractedField]:
+    """键内代码路由（#82）：标签自带的（尾码）补进对应代码字段。
+
+    进境备案清单把 18 位信用代码印在标签里：「境内收货人（91440300…）」。
+    值侧已拆出同一目标的不重复写；证据仍指向标签格。
+    """
+    match = _KEY_TRAILING_CODE.search(pair.key.strip())
+    if match is None:
+        return fields
+    code = match.group(1)
+    target_name = spec.scc_target if len(code) == 18 else spec.split_target
+    target = schema.field(target_name or "")
+    if target is None or any(field.name == target.name for field in fields):
+        return fields
+    return [
+        *fields,
+        _accepted(target, code, pair, sheet, document, evidence_cell=pair.key_cell),
+    ]
 
 
 def _route_code_value(
@@ -244,6 +273,7 @@ def _accepted(
     pair: KeyValue,
     sheet: Sheet,
     document: DocumentIR,
+    evidence_cell: str | None = None,
 ) -> ExtractedField:
     quote = f"{sheet.name}!{pair.key_cell}:{pair.key}"
     return ExtractedField(
@@ -260,7 +290,7 @@ def _accepted(
                 document_id=document.document_id,
                 file_id=document.file_id,
                 filename=document.filename,
-                cell=f"{sheet.name}!{pair.value_cell}",
+                cell=f"{sheet.name}!{evidence_cell or pair.value_cell}",
                 quote=quote[:500],
             )
         ],

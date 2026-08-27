@@ -187,6 +187,9 @@ class LayoutVocab(BaseModel):
     box: list[VocabGroup] = Field(default_factory=list)
     kv: list[VocabGroup] = Field(default_factory=list)
     table: list[VocabGroup] = Field(default_factory=list)
+    # 表尾声明区停扫词（#82）：商品表体扫描命中任一词即停（子串匹配）。
+    # 报关单固定尾部文案加这里，不写公司分支。
+    table_footer_tokens: tuple[str, ...] = ()
 
     def box_labels(self) -> frozenset[str]:
         return frozenset(alias.text for group in self.box for alias in group.aliases)

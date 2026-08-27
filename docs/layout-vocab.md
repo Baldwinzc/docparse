@@ -65,7 +65,7 @@
 
 | type | 本文件挂在 | 值不像则丢 |
 |---|---|---|
-| `datetime` | `ie_date`、`decl_date`、`date` | 不是 `YYYY-MM-DD` / `YYYY-MM-DD HH:MM[:SS]`（Excel 带 `00:00:00` 也算） |
+| `datetime` | `ie_date`、`decl_date`、`date` | 不是 `YYYY-MM-DD` / `YYYY-MM-DD HH:MM[:SS]` / `YYYYMMDD`（Excel 带 `00:00:00`、OCR 紧凑日期也算，#82） |
 | `number` | `pack_no`、`gross_wt`、`net_wt` | 不是纯数字 |
 | `pattern` | `invoice_no` | 对不上 YAML 里的正则 |
 | `date` / `text` | 本阶段不用 | `date` 不吃时间；`text` 等于没约束 |
@@ -75,6 +75,10 @@
 
 单号类只挂了 `invoice_no`。`contr_no` / `contract_no` / `bill_no` 等撞车后再加 YAML，不必改 Python。
 
+## 表尾声明区停扫词（#82）
+
+报关单 / 备案清单固定尾部（特殊关系确认、报关人员、兹声明…、海关批注及签章）既不是数据行也不是整行冒号注记。`table_footer_tokens` 命中任一词的行起，商品表体扫描停止，不进表体、不占格子。新尾部文案只加 YAML。
+
 ## 增别名
 
 改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。以后新表对照 [#31](https://github.com/Baldwinzc/docparse/issues/31)。
@@ -82,3 +86,8 @@
 ## OCR 伪格子（#62）
 
 扫描页 / 文字层 PDF 没有 Excel 格子。`ocr_layout.py` 把 `pages[].blocks` 建成伪 `Sheet.cells` 后，**同一套** `split_sheet` + 本词表拆 KV / 表。不在这里加第二套 BOX / TABLE。新叫法仍改 YAML；行带容差 / 列间隙是几何参数，改 `ocr_layout.py` 常量。
+
+两处 OCR 专属规则（#82）：
+
+- **邻列兜底**：伪格子列界随行漂移，标签与值会差一列。`below` 同列无值时向 ±1 邻列找，要求两格 bbox 水平重叠 ≥ 窄盒宽度一半（`layout.py` `_adjacent_below`，只对带 bbox 的格子生效，xlsx 不受影响）。
+- **词表标签不当续行**：整格文本命中词表键（如「随附单证及编号」）的不并进上一格（`ocr_layout.py` `_should_merge`）。
