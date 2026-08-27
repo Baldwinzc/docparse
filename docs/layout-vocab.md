@@ -78,3 +78,7 @@
 ## 增别名
 
 改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。以后新表对照 [#31](https://github.com/Baldwinzc/docparse/issues/31)。
+
+## OCR 伪格子（#62）
+
+扫描页 / 文字层 PDF 没有 Excel 格子。`ocr_layout.py` 把 `pages[].blocks` 建成伪 `Sheet.cells` 后，**同一套** `split_sheet` + 本词表拆 KV / 表。不在这里加第二套 BOX / TABLE。新叫法仍改 YAML；行带容差 / 列间隙是几何参数，改 `ocr_layout.py` 常量。

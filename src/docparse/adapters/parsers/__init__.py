@@ -6,6 +6,7 @@ from docparse.adapters.parsers.ocr import (
     TextinOcrClient,
     get_ocr_client,
 )
+from docparse.adapters.parsers.ocr_layout import reconstruct_document, reconstruct_page
 from docparse.adapters.parsers.registry import parse_bytes
 
 __all__ = [
@@ -16,4 +17,6 @@ __all__ = [
     "detect_kind",
     "get_ocr_client",
     "parse_bytes",
+    "reconstruct_document",
+    "reconstruct_page",
 ]

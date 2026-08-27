@@ -17,6 +17,7 @@ from docparse.pipeline.steps.extract_content import extract_content_step
 from docparse.pipeline.steps.extract_fields import extract_fields_step
 from docparse.pipeline.steps.ingest import ingest_step
 from docparse.pipeline.steps.reconcile import reconcile_step
+from docparse.pipeline.steps.reconstruct_layout import reconstruct_layout_step
 from docparse.pipeline.steps.route_review import route_review_step
 from docparse.pipeline.steps.unpack import unpack_step
 from docparse.pipeline.steps.validate import validate_step
@@ -28,6 +29,7 @@ DEFAULT_STEPS: list[tuple[str, Step]] = [
     ("ingest", ingest_step),
     ("unpack", unpack_step),
     ("extract", extract_content_step),
+    ("reconstruct", reconstruct_layout_step),
     ("classify", classify_step),
     ("extract_fields", extract_fields_step),
     ("validate", validate_step),
