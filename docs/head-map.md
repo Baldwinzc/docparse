@@ -4,6 +4,7 @@
 
 ```bash
 python -m docparse.cli head /绝对路径/表.xlsx
+python -m docparse.cli head /绝对路径/草单.pdf
 ```
 
 本文件只回答「一张已经打好角色的 sheet，原文怎么变成表头字段」。不切格子（layout）、不认角色（#16）、不拼整单（#19）、不转 code（#14）。

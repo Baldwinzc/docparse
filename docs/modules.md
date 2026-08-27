@@ -28,10 +28,10 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→TextIn OCR、图片同入口（#22）；OCR 字块重建伪格子（#62） | 端到端（#23） |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→TextIn OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23） | zip 拼单 |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
-| 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；旧锚点仍给无 sheet 的文本 | PDF 同组装交 #23 |
+| 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；伪 sheet 同路径（#23：境外发货人锚点、框表标签 fold_key、多页表头取前、同角色货表接续）；旧锚点仍给无 sheet 的文本 | zip 拼单 |
 | 标准化与校验 | `extraction/validate.py` | 骨架：格式 / 证据；业务闸未接 | 规则清单见 [validate-rules.md](validate-rules.md)，确认后由 #20 执行 |
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
@@ -78,7 +78,9 @@ FastAPI 交单（#21）：`POST /v1/jobs` 与 `cli declare` 走同一条 pipelin
 
 云 OCR（#22，选型见 [ocr-benchmark.md](ocr-benchmark.md)）：`adapters/parsers/ocr.py` 的 `TextinOcrClient`，密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警不崩。请求带 `straighten=1`，返回的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。40306 QPS 限流按官方说明不重试、只告警。换 OCR 引擎只在 `ocr.py` 加一个 client 实现 `OcrClient` 协议，不动 `pdf.py` / `image.py` / pipeline。
 
-OCR 版面重建（#62）：`pipeline/steps/reconstruct_layout.py` 挂在 extract 之后、classify 之前。文档有 `pages[].blocks` 且无 `sheets` 时，`adapters/parsers/ocr_layout.py` 按行带聚类 + 分区列切分造伪格子（地址 `p{页}r{行}c{列}`，bbox / block_ids 回指原字块），再复用 `layout.split_sheet` + `sheet_role`。xlsx 已有 sheets 原样跳过。词表 / 刀法零新增。端到端出报关单交 #23。本地对眼：`python -m docparse.cli layout scan.pdf`。
+OCR 版面重建（#62）：`pipeline/steps/reconstruct_layout.py` 挂在 extract 之后、classify 之前。文档有 `pages[].blocks` 且无 `sheets` 时，`adapters/parsers/ocr_layout.py` 按行带聚类 + 分区列切分造伪格子（地址 `p{页}r{行}c{列}`，bbox / block_ids 回指原字块），再复用 `layout.split_sheet` + `sheet_role`。xlsx 已有 sheets 原样跳过。词表 / 刀法零新增。本地对眼：`python -m docparse.cli layout scan.pdf`。
+
+PDF 端到端（#23）：伪 sheet 走现有 `classify_sheets` / `head_map` / `goods_map` / `assemble` / `validate`，不另写字段目录。出口「境外发货人」= `consignorEname`（锚点）。框表标签横排走 `fold_key`（`包装种类（22）` 不当商品表）。多页草单表头取前、同角色货表按页序接续。`POST /v1/jobs` 上传 PDF / jpg / png 与 xlsx 同形。本地对眼：`python -m docparse.cli declare scan.pdf`。半岛关键表头对 #60：毛重 1459.62 / 净重 485 / 件数 214 / 备案号 T5352W000228 / 境外发货人 Peninsula Merchandising Limited；对不上 `needs_review`，不编造。客户原件不进仓库。
 
 每个 parser 只做一件事：`bytes + filename → DocumentIR`。
 

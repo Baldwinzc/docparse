@@ -204,6 +204,40 @@ def test_box_label_row_is_not_a_table() -> None:
     assert 17 in header_rows
 
 
+def test_box_label_row_folds_trailing_code() -> None:
+    """OCR「包装种类（22）」整行仍当框表标签，值走 below KV，不当商品表（#23）。"""
+    from docparse.adapters.parsers.layout import split_sheet
+    from docparse.domain.ir import Cell, Sheet
+
+    cells = [
+        Cell(address="A1", value="包装种类（22）", row=1, column=1),
+        Cell(address="B1", value="件数", row=1, column=2),
+        Cell(address="C1", value="毛重（千克）", row=1, column=3),
+        Cell(address="D1", value="净重（千克）", row=1, column=4),
+        Cell(address="E1", value="成交方式", row=1, column=5),
+        Cell(address="A2", value="纸箱", row=2, column=1),
+        Cell(address="B2", value="214", row=2, column=2),
+        Cell(address="C2", value="1459.62", row=2, column=3),
+        Cell(address="D2", value="485", row=2, column=4),
+        Cell(address="E2", value="FOB", row=2, column=5),
+        Cell(address="A4", value="项号", row=4, column=1),
+        Cell(address="B4", value="商品编号", row=4, column=2),
+        Cell(address="C4", value="商品名称及规格型号", row=4, column=3),
+        Cell(address="A5", value="1", row=5, column=1),
+        Cell(address="B5", value="1905310000", row=5, column=2),
+        Cell(address="C5", value="黄油酥饼", row=5, column=3),
+    ]
+    sheet = split_sheet(Sheet(name="1", cells=cells))
+    pairs = {item.key: item.value for item in sheet.key_values}
+    assert pairs["包装种类（22）"] == "纸箱"
+    assert pairs["件数"] == "214"
+    assert pairs["毛重（千克）"] == "1459.62"
+    assert pairs["净重（千克）"] == "485"
+    assert len(sheet.tables) == 1
+    assert sheet.tables[0].header_row == 4
+    assert "项号" in sheet.tables[0].headers
+
+
 def _kv_colon_workbook() -> bytes:
     book = Workbook()
     packing = book.active

@@ -4,6 +4,7 @@
 
 ```bash
 python -m docparse.cli declare /绝对路径/表.xlsx
+python -m docparse.cli declare /绝对路径/草单.pdf
 python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --agent-name 深圳市泰洲物流有限公司
 ```
 
@@ -49,6 +50,10 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 
 商品行 `customNetWt` / `customGrossWet` 仍归 #18，本层不改货表。
 
+## 多页草单表头（#23）
+
+PDF 一页一张伪 sheet，都是 `draft`。同角色按文档顺序（页序）走，**先到留下**：第 1 页有备案号 / 件毛净，第 2 页空着或只有续表，不覆盖。跨角色 overwrite 仍覆盖（draft 压过 packing）。xlsx 多 sheet 角色不同，行为不变。
+
 ## 以后新 xlsx / 新叫法改哪
 
 对照 [#31](https://github.com/Baldwinzc/docparse/issues/31)。先 `cli layout`，再 `cli head` / `cli goods`，最后 `cli declare`。
@@ -66,5 +71,6 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 | 发票号要进报关单 | #37 先定落点 | 视目录 |
 | 俗称（莲塘口岸、纸箱）要转码 | #27 | 否 |
 | 货表净重抄毛重 | #18，不在这里改 | 否 |
+| PDF 多页草单表头被后页盖掉 | 同角色取前已内置；不要给 draft 开 `head_from_columns` | 否 |
 
 不要 `if company == "恒信"`。不要把商业单据上的监管方式 / 口岸编进无草单的单。

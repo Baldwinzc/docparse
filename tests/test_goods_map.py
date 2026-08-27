@@ -232,6 +232,46 @@ def test_ten_digit_customs_code_header_maps_hs() -> None:
     assert items[0].value_of("gname") == "贴纸"
 
 
+def test_same_role_pages_concat_instead_of_row_align() -> None:
+    """两页 draft 项号 1–2 / 3–4 接成 4 行，不把第 2 页第 1 件补进第 1 件（#23）。"""
+    from docparse.adapters.parsers.layout import split_sheet
+    from docparse.domain.ir import Cell, DocumentIR, Sheet
+    from docparse.extraction.sheet_role import classify_sheet
+
+    def _page(name: str, start: int, count: int) -> Sheet:
+        cells = [
+            Cell(address="A1", value="中华人民共和国海关出口货物报关单", row=1, column=1),
+            Cell(address="A2", value="项号", row=2, column=1),
+            Cell(address="B2", value="商品编号", row=2, column=2),
+            Cell(address="C2", value="商品名称及规格型号", row=2, column=3),
+            Cell(address="D2", value="数量", row=2, column=4),
+        ]
+        for offset in range(count):
+            gno = start + offset
+            row = 3 + offset
+            cells.extend(
+                [
+                    Cell(address=f"A{row}", value=str(gno), row=row, column=1),
+                    Cell(address=f"B{row}", value=f"190531000{gno}", row=row, column=2),
+                    Cell(address=f"C{row}", value=f"商品{gno}", row=row, column=3),
+                    Cell(address=f"D{row}", value=str(gno * 10), row=row, column=4),
+                ]
+            )
+        sheet = split_sheet(Sheet(name=name, cells=cells))
+        return classify_sheet(sheet, filename="scan.pdf")
+
+    document = DocumentIR(
+        document_id="pages",
+        file_id="f",
+        filename="scan.pdf",
+        media_type="application/pdf",
+        sheets=[_page("1", 1, 2), _page("2", 3, 2)],
+    )
+    items = map_document_goods(document)
+    assert [item.value_of("gno") for item in items] == ["1", "2", "3", "4"]
+    assert [item.value_of("gname") for item in items] == ["商品1", "商品2", "商品3", "商品4"]
+
+
 def test_packing_fills_gross_when_qty_aligns() -> None:
     document = parse_excel(
         _workbook({"一般贸易出口": _draft, "装箱单": _packing}),

@@ -131,9 +131,14 @@ def declaration_reviews(
 
 
 def _ordered_sheets(document: DocumentIR, policy: Assembly) -> list[Sheet]:
+    """同角色按文档顺序（PDF 页序）。表头取前，不按 sheet 名字符串排。"""
     eligible = [sheet for sheet in document.sheets if sheet.consume not in _SKIP_CONSUME]
     rank = {role: index for index, role in enumerate(policy.role_priority)}
-    return sorted(eligible, key=lambda sheet: (rank.get(sheet.role, len(rank)), sheet.name))
+    order = {id(sheet): index for index, sheet in enumerate(document.sheets)}
+    return sorted(
+        eligible,
+        key=lambda sheet: (rank.get(sheet.role, len(rank)), order.get(id(sheet), 0)),
+    )
 
 
 def _overwrite_roles(policy: Assembly) -> frozenset[str]:
@@ -158,6 +163,7 @@ def _merge_head(
     masters = _overwrite_roles(policy)
     has_draft = _has_master(sheets, policy)
     merged: dict[str, ExtractedField] = {}
+    source_role: dict[str, str] = {}
     for sheet in sheets:
         mode = policy.fill.get(sheet.role, "fill")
         if mode == "ignore":
@@ -173,9 +179,13 @@ def _merge_head(
             current = merged.get(field.name)
             if current is None or not (current.value or "").strip():
                 merged[field.name] = deepcopy(field)
+                source_role[field.name] = sheet.role
                 continue
-            if mode == "overwrite":
+            # 同角色多页：先到的表头留下（PDF 草单跨页取前，#23）。
+            # 跨角色 overwrite 仍覆盖（draft 压过 packing）。
+            if mode == "overwrite" and source_role.get(field.name) != sheet.role:
                 merged[field.name] = deepcopy(field)
+                source_role[field.name] = sheet.role
     return merged
 
 

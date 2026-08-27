@@ -18,6 +18,9 @@ goods_master:
   # 合计行词表（#68）。任一带这些词的格子整行丢弃，不并单、不成商品。
   # 新叫法（如 GRAND TOTAL）加这里，不写公司分支。
   total_row_tokens: [合计, 合計, 總計, 总计, 小计, 小計, Total, Summary]
+  # 同角色页号伪 sheet 接续（#23）。PDF 草单跨页项号 1–10 / 11–19 拼一张；
+  # xlsx 具名 draft 不接；箱单 / 发票仍按行序补空。
+  concat_same_role: true
   role_bonus:
     draft: 10
     declaration_list: 10
@@ -406,8 +409,8 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [境外收货人, 境外收发货人, 买方BUYER, 买方, BUYER, 买 方, Bill To]
-    notes: 出口草单「境外收货人」。出口商业单据买方 / Bill To 只补充。
+    anchors: [境外收货人, 境外发货人, 境外收发货人, 买方BUYER, 买方, BUYER, 买 方, Bill To]
+    notes: 出口草单「境外收货人」；进境备案清单「境外发货人」同一字段。出口商业单据买方 / Bill To 只补充。
 
   - name: ownerName
     display_name: 生产销售单位名称

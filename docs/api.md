@@ -8,6 +8,7 @@
 PYTHONPATH=src uvicorn docparse.api.app:app --host 127.0.0.1 --port 8088
 # 浏览器打开 http://127.0.0.1:8088/review
 python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --agent-name 深圳市泰洲物流有限公司
+python -m docparse.cli declare /绝对路径/草单.pdf
 ```
 
 ## 请求
@@ -16,7 +17,7 @@ python -m docparse.cli declare /绝对路径/表.xlsx --agent-code 4403180867 --
 
 | 部分 | 来源 | 说明 |
 |---|---|---|
-| `file` | 上传 | 本期 xlsx；以后同一接口接 PDF / zip |
+| `file` | 上传 | xlsx / xls / PDF / jpg / png（同一 `POST /v1/jobs`）；zip 以后拼单 |
 | `agentCode` / `agentName` / `agentScc` / `agentCiqCode` | `fields.yaml` `caller_params` | 不解析。没传则用 YAML `default`（泰洲） |
 | `cusIEFlag` | `assembly.defaults` 可覆盖 | 默认 `E`；进口传 `I` |
 | `run` | 已有 | 默认 true，同步跑完 |
@@ -65,7 +66,7 @@ Job
 | 多一个申报单位字段 | `caller_params` 加一项 | 否（Form / OpenAPI 从 YAML 生成） |
 | 换默认申报单位 | `caller_params` 的 `default` | 否 |
 | 调用方要覆盖进出口标志 | 请求带 `cusIEFlag` | 否 |
-| 以后上传 PDF | #22 / #23 parser | 否（同一 `POST /v1/jobs`） |
+| 上传 PDF / 图片 | 已接同一 `POST /v1/jobs`（#22/#62/#23） | 否 |
 | zip 多文件拼一张单 | assemble / `extract_fields_step` 主文档选择 | 否（入口已是 list） |
 | 校验规则 | #20 数据文件 | 否（同一接口自动带闸） |
 | 结构化日志 / 错误码 | `api/errors.py` + request_id | 只改挂钩处 |

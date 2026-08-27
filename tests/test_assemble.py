@@ -82,6 +82,44 @@ def test_draft_is_copied_and_codes_are_looked_up() -> None:
     assert reviews["iePort"].evidence
 
 
+def test_same_role_pages_keep_first_head() -> None:
+    """两页 draft：第 1 页有备案号，第 2 页空着或另值，表头取前（#23）。"""
+    from docparse.adapters.parsers.layout import split_sheet
+    from docparse.domain.ir import Cell, DocumentIR, Sheet
+    from docparse.extraction.sheet_role import classify_sheet
+
+    def _page(name: str, *, manual: str, pack: str) -> Sheet:
+        cells = [
+            Cell(address="A1", value="中华人民共和国海关出口货物报关单", row=1, column=1),
+            Cell(address="A2", value="备案号", row=2, column=1),
+            Cell(address="A3", value=manual, row=3, column=1),
+            Cell(address="B2", value="件数", row=2, column=2),
+            Cell(address="B3", value=pack, row=3, column=2),
+            Cell(address="A5", value="项号", row=5, column=1),
+            Cell(address="B5", value="商品编号", row=5, column=2),
+            Cell(address="C5", value="商品名称及规格型号", row=5, column=3),
+            Cell(address="A6", value="1", row=6, column=1),
+            Cell(address="B6", value="1905310000", row=6, column=2),
+            Cell(address="C6", value="饼", row=6, column=3),
+        ]
+        sheet = split_sheet(Sheet(name=name, cells=cells))
+        return classify_sheet(sheet, filename="scan.pdf")
+
+    document = DocumentIR(
+        document_id="pages",
+        file_id="f",
+        filename="scan.pdf",
+        media_type="application/pdf",
+        sheets=[
+            _page("1", manual="T5352W000228", pack="214"),
+            _page("2", manual="SHOULD-NOT-WIN", pack="999"),
+        ],
+    )
+    payload = declaration_payload(assemble_declaration(document))
+    assert payload["manualNo"] == "T5352W000228"
+    assert payload["packNo"] == "214"
+
+
 def test_caller_overrides_default_ie_flag() -> None:
     document = _parse({"一般贸易出口": _draft}, "draft-only.xlsx")
     payload = declaration_payload(assemble_declaration(document, agent={"cusIEFlag": "I"}))

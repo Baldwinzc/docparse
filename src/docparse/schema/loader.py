@@ -84,6 +84,8 @@ class GoodsMaster(BaseModel):
     total_row_tokens: list[str] = Field(
         default_factory=lambda: ["合计", "合計", "總計", "总计", "小计", "小計", "Total", "Summary"]
     )
+    # 同角色页号伪 sheet 接续（#23）。PDF 草单跨页拼一张；xlsx 具名 draft 不接。
+    concat_same_role: bool = True
 
 
 _FILL_MODES = frozenset({"overwrite", "fill", "ignore"})

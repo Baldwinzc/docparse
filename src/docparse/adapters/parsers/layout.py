@@ -182,12 +182,18 @@ def _blank_if_placeholder(text: str) -> str:
     return "" if _is_placeholder(text) else text
 
 
+def _box_norms() -> frozenset[str]:
+    return frozenset(_norm_label(item) for item in _box_labels())
+
+
 def _is_box_label_row(row_cells: list[Cell]) -> bool:
     """框表标签横排（包装种类/件数/毛重…）不当表头。只看 BOX，不看 KV。
 
     占位格视同空（#64）：不占「整行 BOX」的名额，也不破坏判定。
+    词形与 KV 一样走 fold_key（#23）：「包装种类（22）」＝「包装种类」，
+    OCR 尾码不把整行抬成商品表。
     """
-    labels = _box_labels()
+    norms = _box_norms()
     hits = 0
     present = 0
     for cell in row_cells:
@@ -195,7 +201,7 @@ def _is_box_label_row(row_cells: list[Cell]) -> bool:
         if _is_placeholder(cleaned):
             continue
         present += 1
-        if cleaned in labels:
+        if _norm_label(cleaned) in norms:
             hits += 1
     return hits >= 3 and hits == present
 
