@@ -156,6 +156,7 @@ python -m docparse.cli declare path/to/file.xlsx  # 组装一张报关单 JSON
 
 ## 文档
 
+- [合单对接交付](docs/handover.md)（怎么跑、调哪个口、字段要点、要什么 Key）
 - [流程图](docs/flow.html)（浏览器用 `file://` 打开本地文件）
 - [设计文档](docs/design.md)
 - [模块地图](docs/modules.md)（后期按模块拆 Issue）
