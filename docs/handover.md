@@ -10,11 +10,10 @@
 
 ## 1. 本机部署
 
-需要：Python 3.11+，能访问外网（扫描件走合合 TextIn）。没有 Docker 配方，按单机 uvicorn 即可。
+需要：Python 3.11+，能访问外网（扫描件走合合 TextIn）。没有 Docker 配方，按单机 uvicorn 即可。解压收到的压缩包，进入项目根目录（有 `pyproject.toml` 的那一层）：
 
 ```bash
-git clone https://github.com/Baldwinzc/docparse.git
-cd docparse
+cd <解压后的项目目录>
 python3.11 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
