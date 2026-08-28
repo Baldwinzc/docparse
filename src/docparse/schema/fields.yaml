@@ -82,6 +82,22 @@ assembly:
     copy_net_to_gross: false
   invoice_vocab: invoice_no
 
+# 合单出口（#86）。对眼页仍走 /v1/jobs；本段只给 POST /v1/declare。
+# 新忽略键的合单默认值加 constants；新别名复制加 aliases；新放行原因 / 字段加 allow_*。
+# 抽取不写这些键；不要按公司填。
+declare_export:
+  constants:
+    dataSource: "7"
+    promiseItem1: "0"
+    promiseItem2: "0"
+    promiseItem3: "0"
+  aliases:
+    packName: wrapType
+    packType: wrapType
+  goods_id: true
+  allow_reasons: [gmodel_raw, code_table_pending]
+  allow_fields: [gmodel]
+
 document_types:
   - customs_declaration
   - invoice
@@ -200,7 +216,7 @@ ignored:
     layout: none
     parse: false
     ignore: true
-    notes: json 标注可忽略。不要生成 UUID。输出商品项时不要写这个键。
+    notes: json 标注可忽略。抽取不写。合单出口（#86）按 declare_export.goods_id 生成，不进抽取。
 
   - name: sysBillNo
     display_name: 公司单据编号

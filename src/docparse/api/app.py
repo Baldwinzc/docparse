@@ -5,7 +5,8 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 
 from docparse.api.errors import unhandled_error_handler
-from docparse.api.routes import REQUEST_ID_HEADER, router
+from docparse.api.routes import router
+from docparse.api.submit import REQUEST_ID_HEADER
 from docparse.config import get_settings
 
 

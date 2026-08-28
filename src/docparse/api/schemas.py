@@ -5,6 +5,25 @@ from __future__ import annotations
 from docparse.api.caller import accepted_caller_keys
 from docparse.schema.loader import Schema, load_schema
 
+DECLARE_EXAMPLE = {
+    "code": 0,
+    "msg": "操作成功",
+    "result": True,
+    "dec_results": {
+        "contrNo": "HDX2026-251",
+        "grossWt": "296.46",
+        "netWt": "218.375",
+        "agentCode": "4403180867",
+        "agentName": "深圳市泰洲物流有限公司",
+        "supvModeCdde": "0110",
+        "dataSource": "7",
+        "tdecGoodsitemsVoArr": [
+            {"gname": "表壳配件/壳体", "gqty": "150", "gunit": "008"},
+        ],
+    },
+}
+
+
 JOB_EXAMPLE = {
     "id": "ab12cd",
     "status": "needs_review",

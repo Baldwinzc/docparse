@@ -16,7 +16,7 @@ from docparse.api.app import create_app
 from docparse.api.routes import get_pipeline
 from docparse.config import Settings
 from docparse.pipeline.runner import Pipeline
-from xlsx_fixtures import _draft, _net_only_packing, _workbook
+from xlsx_fixtures import _coded_draft, _draft, _net_only_packing, _workbook
 
 
 def _client() -> TestClient:
@@ -120,6 +120,84 @@ def test_missing_file_is_400() -> None:
     assert response.status_code == 400
 
 
+def test_declare_coded_draft_returns_dec_results() -> None:
+    response = _client().post(
+        "/v1/declare",
+        files={"file": _xlsx({"一般贸易出口": _coded_draft}, "coded.xlsx")},
+        data={"agentCode": "4403180867", "agentName": "深圳市泰洲物流有限公司"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] == 0
+    assert body["result"] is True
+    assert body["msg"] == "操作成功"
+    dec = body["dec_results"]
+    assert dec["contrNo"] == "HDX2026-251"
+    assert dec["grossWt"] == "296.46"
+    assert dec["supvModeCdde"] == "0110"
+    assert dec["cusTrafMode"] == "4"
+    assert dec["transMode"] == "3"
+    assert dec["wrapType"] == "99"
+    assert dec["packName"] == "99"
+    assert dec["packType"] == "99"
+    assert dec["iePort"] == "5304"
+    assert dec["dataSource"] == "7"
+    assert dec["promiseItem1"] == "0"
+    assert "_meta" not in dec
+    goods = dec["tdecGoodsitemsVoArr"]
+    assert goods
+    assert goods[0]["gname"] == "表壳配件/壳体"
+    assert goods[0]["gunit"] == "008"
+    assert goods[0]["cusOriginCountry"] == "CHN"
+    assert goods[0]["destinationCountry"] == "HKG"
+    assert goods[0]["districtCode"] == "44139"
+    assert "_source" not in goods[0]
+    assert goods[0]["id"]
+    assert "一般贸易" not in str(dec)
+
+
+def test_declare_unknown_code_does_not_submit() -> None:
+    response = _client().post(
+        "/v1/declare",
+        files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] != 0
+    assert body["result"] is False
+    assert body["dec_results"] is None
+
+
+def test_declare_missing_gross_does_not_submit() -> None:
+    response = _client().post(
+        "/v1/declare",
+        files={"file": _xlsx({"总箱单": _net_only_packing}, "net-only.xlsx")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] != 0
+    assert body["result"] is False
+    assert body["dec_results"] is None
+
+
+def test_jobs_still_returns_meta_when_declare_holds() -> None:
+    response = _client().post(
+        "/v1/jobs",
+        files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "needs_review"
+    assert body["result"]["declaration"]["_meta"]
+    assert body["result"]["declaration"]["supvModeCdde"] == "一般贸易"
+    assert body["result"]["reviews"]
+
+
+def test_declare_missing_file_is_400() -> None:
+    response = _client().post("/v1/declare", data={"agentCode": "4403180867"})
+    assert response.status_code == 400
+
+
 def test_openapi_shows_caller_and_goods_array() -> None:
     spec = _client().get("/openapi.json").json()
     text = str(spec)
@@ -127,6 +205,7 @@ def test_openapi_shows_caller_and_goods_array() -> None:
     assert "4403180867" in text
     assert "tdecGoodsitemsVoArr" in text
     assert "/v1/jobs" in spec["paths"]
+    assert "/v1/declare" in spec["paths"]
     assert "/health" in spec["paths"]
 
 
