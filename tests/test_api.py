@@ -156,31 +156,38 @@ def test_declare_coded_draft_returns_dec_results() -> None:
     assert "一般贸易" not in str(dec)
 
 
-def test_declare_unknown_code_does_not_submit() -> None:
+def test_declare_unknown_code_still_submits() -> None:
     response = _client().post(
         "/v1/declare",
         files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["code"] != 0
-    assert body["result"] is False
-    assert body["dec_results"] is None
+    assert body["code"] == 0
+    assert body["result"] is True
+    dec = body["dec_results"]
+    assert dec["contrNo"] == "HDX2026-251"
+    assert dec["supvModeCdde"] == "0110"
+    assert dec["iePort"] == "莲塘口岸"
+    assert "_meta" not in dec
 
 
-def test_declare_missing_gross_does_not_submit() -> None:
+def test_declare_missing_gross_still_submits() -> None:
     response = _client().post(
         "/v1/declare",
         files={"file": _xlsx({"总箱单": _net_only_packing}, "net-only.xlsx")},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["code"] != 0
-    assert body["result"] is False
-    assert body["dec_results"] is None
+    assert body["code"] == 0
+    assert body["result"] is True
+    dec = body["dec_results"]
+    assert dec["netWt"] == "2825.47"
+    assert dec["grossWt"] == ""
+    assert "_meta" not in dec
 
 
-def test_jobs_still_returns_meta_when_declare_holds() -> None:
+def test_jobs_still_returns_meta_when_declare_submits() -> None:
     response = _client().post(
         "/v1/jobs",
         files={"file": _xlsx({"一般贸易出口": _draft}, "hengxin.xlsx")},

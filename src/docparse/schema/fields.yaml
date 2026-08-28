@@ -83,8 +83,8 @@ assembly:
   invoice_vocab: invoice_no
 
 # 合单出口（#86）。对眼页仍走 /v1/jobs；本段只给 POST /v1/declare。
-# 新忽略键的合单默认值加 constants；新别名复制加 aliases；新放行原因 / 字段加 allow_*。
-# 抽取不写这些键；不要按公司填。
+# 新忽略键的合单默认值加 constants；新别名复制加 aliases。
+# 抽取不写这些键；不要按公司填。有单就交，只有解析失败不交。
 declare_export:
   constants:
     dataSource: "7"
@@ -95,8 +95,6 @@ declare_export:
     packName: wrapType
     packType: wrapType
   goods_id: true
-  allow_reasons: [gmodel_raw, code_table_pending]
-  allow_fields: [gmodel]
 
 document_types:
   - customs_declaration
