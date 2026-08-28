@@ -58,41 +58,34 @@ def test_public_declaration_strips_meta_and_writes_codes() -> None:
     assert "_source" in source["tdecGoodsitemsVoArr"][0]
 
 
-def test_gmodel_raw_alone_still_submits() -> None:
-    declaration = {
-        "contrNo": "A",
-        "tdecGoodsitemsVoArr": [{"gname": "x", "gmodel": "原文"}],
-        "_meta": {"review_reasons": ["goods[1].gmodel:gmodel_raw"], "codes": {}},
-    }
+def test_needs_review_still_submits() -> None:
     job = _job(
         status=JobStatus.NEEDS_REVIEW,
-        declaration=declaration,
+        declaration={
+            "contrNo": "A",
+            "iePort": "莲塘口岸",
+            "tdecGoodsitemsVoArr": [{"gname": "x", "gmodel": "原文"}],
+            "_meta": {"codes": {}},
+        },
         reviews=[
+            FieldReview(
+                path="iePort",
+                status="needs_review",
+                reasons=["unknown_code:海关口岸代码"],
+            ),
             FieldReview(
                 path="tdecGoodsitemsVoArr[0].gmodel",
                 status="needs_review",
                 reasons=["gmodel_raw"],
-            )
+            ),
         ],
     )
     body = to_dec_envelope(job)
     assert body["code"] == 0
     assert body["result"] is True
     assert body["dec_results"]["contrNo"] == "A"
-
-
-def test_unknown_code_does_not_submit() -> None:
-    job = _job(
-        status=JobStatus.NEEDS_REVIEW,
-        declaration={"contrNo": "A", "iePort": "莲塘口岸", "_meta": {}},
-        reviews=[
-            FieldReview(path="iePort", status="needs_review", reasons=["unknown_code:海关口岸代码"])
-        ],
-    )
-    body = to_dec_envelope(job)
-    assert body["code"] == 1
-    assert body["result"] is False
-    assert body["dec_results"] is None
+    assert body["dec_results"]["iePort"] == "莲塘口岸"
+    assert "_meta" not in body["dec_results"]
 
 
 def test_failed_job_does_not_submit() -> None:

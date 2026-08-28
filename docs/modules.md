@@ -36,7 +36,7 @@ docparse/
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 | 金额、单号跨文件 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 | 复核页另开 Issue |
 | FastAPI 交单 | `api/routes.py` + `pipeline/runner.py` | `POST /v1/jobs` 交 `declaration` + `reviews`（#21） | PDF / zip 拼单不改路由 |
-| 合单信封 | `api/export_dec.py` + `POST /v1/declare` | Demo `{code,msg,result,dec_results}`（#86）；`needs_review` 不交 | 新常量 / 别名 / 放行原因改 YAML |
+| 合单信封 | `api/export_dec.py` + `POST /v1/declare` | Demo `{code,msg,result,dec_results}`（#86）；有单就交 | 新常量 / 别名改 YAML |
 | 对眼页 | `api/static/review.html` + `GET /v1/schema` | 只画报关单 + reviews（#44） | 不渲染 IR |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
 | 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 | 换供应商只改这里 |
