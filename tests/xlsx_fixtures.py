@@ -102,6 +102,14 @@ def _draft(sheet) -> None:
             cell.border = _thin()
 
 
+def _coded_draft(sheet) -> None:
+    """码表能转上的草单。合单出口验收用；俗称（莲塘口岸 / 其它）仍走 _draft。"""
+    _draft(sheet)
+    sheet["E4"] = "蛇口海关"
+    sheet["A12"] = "其他包装"
+    sheet["J18"] = "HKD"
+
+
 def _packing(sheet) -> None:
     sheet["A1"] = "PACKING LIST"
     sheet["I4"] = "Invoice No.﹕"

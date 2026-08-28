@@ -120,12 +120,23 @@ class Assembly(BaseModel):
         return self
 
 
+class DeclareExport(BaseModel):
+    """合单信封（#86）。对眼页不读这里。新默认值 / 别名 / 放行原因加 YAML。"""
+
+    constants: dict[str, str] = Field(default_factory=dict)
+    aliases: dict[str, str] = Field(default_factory=dict)
+    goods_id: bool = False
+    allow_reasons: list[str] = Field(default_factory=list)
+    allow_fields: list[str] = Field(default_factory=list)
+
+
 class Schema(BaseModel):
     version: int = 2
     document_types: list[str] = Field(default_factory=list)
     goods_array: str = "tdecGoodsitemsVoArr"
     goods_master: GoodsMaster = Field(default_factory=GoodsMaster)
     assembly: Assembly = Field(default_factory=Assembly)
+    declare_export: DeclareExport = Field(default_factory=DeclareExport)
     port_mapping: list[PortMapping] = Field(default_factory=list)
     caller_params: list[FieldSpec] = Field(default_factory=list)
     ignored: list[FieldSpec] = Field(default_factory=list)
