@@ -50,16 +50,16 @@ Job
 
 ```text
 {
-  code          0 成功 / 1 待复核不交 / 2 解析失败
+  code          0 有单 / 2 解析失败
   msg
   result        true 仅 code=0
-  dec_results   成功时一张报关单；否则 null
+  dec_results   有单时一张报关单；解析失败 null
 }
 ```
 
 `dec_results`：剥 `_meta` / 货行 `_source`；有码的字段写 code；`dataSource` / `promiseItem*` 出口填死；`packName` / `packType` 复制 `wrapType`；货行 `id` 出口生成。策略在 `fields.yaml` `declare_export`。
 
-**不交**：除放行项外仍有 `needs_review`，或 `failed`。HTTP 仍 200。放行项默认 `gmodel_raw` 与 `code_table_pending`（#11 不编 `0|0|...`；币制等码表未就绪不挡合单）。转不出码、缺毛重、件毛净对不上仍不交。
+**有单就交**：`needs_review`（转不出码、缺毛重、gmodel 原文）仍 `code=0` 带 `dec_results`。对眼页继续用 `/v1/jobs` 看复核。只有 runner 接住的解析失败才 `code=2`、`dec_results=null`。
 
 ## 错误分界
 
@@ -67,8 +67,8 @@ Job
 |---|---|
 | 400 | 空文件、超大、没带 file |
 | 200 + Job `needs_review` | 对眼：缺字段、转不出 code、件毛净对不上 |
-| 200 + `{code:1, dec_results:null}` | 合单：同上，不交单 |
-| 200 + Job `failed` / `{code:2}` | 解析/组装 runner 已接住的失败 |
+| 200 + `{code:0, dec_results:{...}}` | 合单：有单就交，含待复核字段 |
+| 200 + Job `failed` / `{code:2, dec_results:null}` | 解析/组装 runner 已接住的失败 |
 | 404 | job 不存在（仅 `/v1/jobs/{id}`） |
 | 500 | 没映射到的服务器异常 |
 
@@ -90,7 +90,6 @@ Job
 | 校验规则 | #20 数据文件 | 否（同一接口自动带闸） |
 | 合单要多一个忽略键默认值 | `declare_export.constants` | 否 |
 | 合单要复制某字段（如 packName） | `declare_export.aliases` | 否 |
-| 合单多一种可放行的复核原因 | `declare_export.allow_reasons` / `allow_fields` | 否 |
 | 合单信封 / code 数字 | `api/export_dec.py` | 只改出口 |
 | 结构化日志 / 错误码 | `api/errors.py` + request_id | 只改挂钩处 |
 

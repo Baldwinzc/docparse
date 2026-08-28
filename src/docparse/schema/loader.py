@@ -121,13 +121,11 @@ class Assembly(BaseModel):
 
 
 class DeclareExport(BaseModel):
-    """合单信封（#86）。对眼页不读这里。新默认值 / 别名 / 放行原因加 YAML。"""
+    """合单信封（#86）。对眼页不读这里。新默认值 / 别名加 YAML。"""
 
     constants: dict[str, str] = Field(default_factory=dict)
     aliases: dict[str, str] = Field(default_factory=dict)
     goods_id: bool = False
-    allow_reasons: list[str] = Field(default_factory=list)
-    allow_fields: list[str] = Field(default_factory=list)
 
 
 class Schema(BaseModel):
