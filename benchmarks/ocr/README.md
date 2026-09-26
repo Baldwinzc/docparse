@@ -1,6 +1,8 @@
 # 云 OCR 引擎实测装置
 
-对应 Issue：[#60](https://github.com/Baldwinzc/docparse/issues/60)。为 #22 选型服务，只测云 API（CLAUDE.md 约束），不装本地 OCR。
+对应 Issue：[#60](https://github.com/Baldwinzc/docparse/issues/60)。为 #22 选型服务，**只测云 API**——成稿时 CLAUDE.md 还是「只走云 API」约束，脚本按那个口径写，不装本地 OCR。
+
+> **历史装置**：本地化（#94）后本文改作历史基线，结论见 [docs/ocr-benchmark.md](../../docs/ocr-benchmark.md)。本目录的云引擎适配器**保留可跑**（密钥留空即不外呼），本地引擎的离线评测台另开 #97——#97 的产出要与这里的表**同表并列**对比。约束口径见 [CLAUDE.md](../../CLAUDE.md)。
 
 ## 结构
 

@@ -1,7 +1,10 @@
 """云 OCR：TextIn 通用文字识别（#60 实测选型，docs/ocr-benchmark.md）。
 
-模型只走云 API（CLAUDE.md 约束），不装本地引擎。密钥走
-DOCPARSE_TEXTIN_APP_ID / DOCPARSE_TEXTIN_SECRET_CODE，无密钥不崩：
+本地优先、云端默认关（CLAUDE.md 约束 · #94）：本文件是**云端 TextIn** 实现，
+密钥留空即不外呼、只降级为 warning。本地 OCR 引擎按同一个 OcrClient 协议
+接入（#99），下游 pdf.py / image.py / pipeline 零改动。
+
+密钥走 DOCPARSE_TEXTIN_APP_ID / DOCPARSE_TEXTIN_SECRET_CODE，无密钥不崩：
 降级为 warning，文档照常进流水线（后续 needs_review），不编文字。
 
 坐标约定：请求带 straighten=1，TextIn 返回的所有 bbox 均以**正立图**为
