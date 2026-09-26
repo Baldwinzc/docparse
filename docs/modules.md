@@ -1,6 +1,6 @@
 # 模块地图
 
-流程图见 [flow.html](flow.html)。OCR 引擎对照（开源显存 / 闭源价格）见 [ocr-survey.md](ocr-survey.md)（#7，**历史对照**）。本地化约束（本地优先，云端默认关）见 [CLAUDE.md](../CLAUDE.md) 产品约束，实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
+流程图见 [flow.html](flow.html)。OCR 引擎对照（开源显存 / 闭源价格）见 [ocr-survey.md](ocr-survey.md)（#7，**历史对照**）。**本地**引擎选型（OCR / 方向分类 / 本地 LLM 候选与判据）见 [local-models-survey.md](local-models-survey.md)（#96）。本地化约束（本地优先，云端默认关）见 [CLAUDE.md](../CLAUDE.md) 产品约束，实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
 
 ```text
 docparse/
@@ -41,7 +41,7 @@ docparse/
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
 | 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式配置则跳过。本地端点 #101、离线开关 #100 | 换供应商 / 换本地引擎只改这里 |
 
-模型链路分层与云选型（**历史对照**，成稿于「只走云 API」时期）见 [model-survey.md](model-survey.md)（#1）。本地化约束与实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)：#96 调研 → #97 评测 → #99 接协议 / #100 离线开关 / #101 本地 LLM → #102 交付。
+模型链路分层与云选型（**历史对照**，成稿于「只走云 API」时期）见 [model-survey.md](model-survey.md)（#1）。本地引擎候选、方向分类与本地 LLM 端点见 [local-models-survey.md](local-models-survey.md)（#96）。本地化约束与实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)：#96 调研 → #97 评测 → #99 接协议 / #100 离线开关 / #101 本地 LLM → #102 交付。
 
 ## 推荐拆 Issue 的顺序
 
