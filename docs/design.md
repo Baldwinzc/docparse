@@ -14,18 +14,21 @@
 ### 明确不做（本阶段）
 
 - 不做通用智能体，不引入 LangChain / LangGraph
-- 不部署本地 LLM / VLM / OCR 大模型
 - 不实现数据库和对象存储
 - 不实现人工复核前端
 - 不绑定具体报关单模板（字段表先占位）
+- 不做端到端 OCR-VLM 主路径（第一期 OCR + 规则，VLM 非必须）
+
+> 不再出现「不部署本地模型」这条：本地化（#94）已把方向反过来，约束见 [CLAUDE.md](../CLAUDE.md)「已对齐的产品约束」。
 
 ## 2. 架构原则
 
 1. **流水线，不是 Agent。** 步骤顺序写死，模型只作为某一步里的函数。
-2. **规则优先，API 兜底。** Excel / 文本 PDF 先程序解析；扫描件和歧义字段再调云 API。
-3. **统一中间表示（IR）。** 所有解析器输出同一套 `ParsedDocument`，后续步骤不关心原始格式。
-4. **可替换适配器。** 任务存储、文件存储、LLM 客户端都走 Protocol，当前给内存实现。
-5. **禁止无证据写入。** 字段没有 `evidence` 就不能自动通过。
+2. **规则优先，模型兜底。** Excel / 文本 PDF 先程序解析；扫描件走 OCR，歧义字段才调模型。
+3. **本地优先，云端默认关，显式配置才外呼。** 解析 / OCR / 模型调用默认全在内网完成，数据不出网；云 API 代码保留但默认关闭，必须显式配置才发请求（#94）。
+4. **统一中间表示（IR）。** 所有解析器输出同一套 `ParsedDocument`，后续步骤不关心原始格式。
+5. **可替换适配器。** 任务存储、文件存储、LLM 客户端都走 Protocol，当前给内存实现。
+6. **禁止无证据写入。** 字段没有 `evidence` 就不能自动通过。
 
 ## 3. 总体流程
 
@@ -56,7 +59,7 @@ sequenceDiagram
     participant Jobs as JobStore
     participant Files as FileStore
     participant P as Pipeline
-    participant LLM as LLM API
+    participant LLM as 模型端点
 
     U->>API: POST /v1/jobs
     API->>Files: put(raw bytes)
@@ -66,7 +69,7 @@ sequenceDiagram
     P->>Files: get / 派生文件
     P->>P: unpack / parse / classify / extract / validate
     opt 规则不够或 OCR 低置信
-        P->>LLM: 结构化抽取 / 局部消歧
+        P->>LLM: 结构化抽取 / 局部消歧（本地优先，云端默认关）
         LLM-->>P: JSON + 证据引用
     end
     P->>Jobs: update(succeeded | needs_review | failed)
@@ -85,7 +88,7 @@ src/docparse/
   adapters/
     files/        文件存储 Protocol（内存 / 预留 S3）
     jobs/         任务存储 Protocol（内存 / 预留 Postgres）
-    llm/          云 API 客户端
+    llm/          模型客户端（本地优先，云端默认关）
     parsers/      ZIP / PDF / Excel / 图片
   extraction/     规则抽取 + LLM 抽取
   schema/         字段定义 YAML（待需求方确认）
@@ -104,18 +107,20 @@ src/docparse/
 | `reconcile` | 同一压缩包跨文件对齐 | 解释可调 LLM，改值不允许 |
 | `route_review` | 按置信度和冲突分流 | 否 |
 
-## 5. 模型调用（本阶段：只走 API）
+## 5. 模型调用（本地优先，云端默认关）
 
-配置见 `.env.example`。客户端按 OpenAI 兼容协议封装，便于换供应商。
+配置见 `.env.example`。客户端按 OpenAI 兼容协议封装，本地端点（内网 vLLM / Ollama）与云端端点走**同一个 Protocol**，换端点不换流水线。
 
-调用纪律：
+纪律（#94）：
 
+- **默认不出网**：不显式配置端点就不发请求，走 `missing` 而不是悄悄外呼
+- 本地端点优先；云端保留但默认关，必须显式启用
 - 只传局部文本或局部截图，不把整个压缩包塞进上下文
 - 必须带 JSON Schema；找不到返回 `null`
 - 每个值必须回指 IR 中的 `block_id` / 单元格
 - 模型输出必须再过规则校验，不能直接入库
 
-后续若改为本地部署，只换 `adapters/llm` 实现，流水线不动。
+本地端点见 #101，零外呼验证见 #100，离线部署交接见 #102。
 
 ## 6. 安全解压
 
@@ -136,5 +141,5 @@ src/docparse/
 1. 文档类型清单（是否含发票、装箱单、提单、合同）
 2. 字段定义、是否必填、校验规则
 3. 脱敏样本和模板种类
-4. 日均量和是否允许数据出网（当前假设允许走 API）
+4. 日均量（**数据不出网已定**，见 [CLAUDE.md](../CLAUDE.md) 产品约束；容量 / 规格换算见 #98）
 5. 可接受的人工复核比例和时延

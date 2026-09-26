@@ -5,7 +5,7 @@
 当前阶段：Excel 框表 dump 已有；输出字段目录见 [docs/field-schema.md](docs/field-schema.md)；码表见 [docs/code-tables.md](docs/code-tables.md)；sheet 角色见 [docs/sheet-roles.md](docs/sheet-roles.md)；整单组装见 [docs/assemble.md](docs/assemble.md)。约束：
 
 - 主链路是确定性流水线，不是 Agent，也不引入 LangChain / LangGraph
-- 模型只通过云 API 调用，不部署本地大模型
+- **本地优先，云端默认关**：解析 / OCR / 模型调用默认全部在内网完成，云 API 保留但必须显式配置才外呼（口径见 [CLAUDE.md](CLAUDE.md) 产品约束 · #94）
 - 持久化先不实现，接口和数据模型已预留，后续可换成 PostgreSQL + 对象存储
 
 ## 主链路
@@ -36,27 +36,27 @@ flowchart TD
 
 ## 字段怎么抽
 
-规则能抽到就不调模型。抽到的值必须带回原文证据。
+规则能抽到就不调模型；云端默认关，要外呼必须先在配置里显式启用。抽到的值必须带回原文证据。
 
 ```mermaid
 flowchart TD
     H0[按字段表逐个字段] --> H1{规则能抽到?}
     H1 -->|是| H2[锚点 / 表头 / 正则]
     H1 -->|否| H3{字段允许 LLM?}
-    H3 -->|是，且已配 API Key| H4[云 API 结构化抽取]
-    H3 -->|否，或未配 Key| H5[标记 missing]
+    H3 -->|是，且已显式配置端点| H4[LLM 结构化抽取<br/>本地端点优先]
+    H3 -->|否，或未配端点| H5[标记 missing]
     H2 --> H6[写入值 + 证据]
     H4 --> H6
     H5 --> H7[进入校验]
     H6 --> H7[格式 · 必填 · 证据检查]
 ```
 
-云 API 再拆三层，不要横向比「哪个大模型最强」。链路分层与方舟/LAS 见 [docs/model-survey.md](docs/model-survey.md)。OCR 引擎本身（开源参数量/显存 vs 闭源价格）见 [docs/ocr-survey.md](docs/ocr-survey.md)。第一期扫描件走 **OCR + 规则**，VLM 非必须。
+下面这张是**云端兜底分层**的分支图，成稿于「只走云 API」时期，现在是**默认关**的历史对照：真要调云端，仍按这个三层拆，不要横向比「哪个大模型最强」。链路分层与方舟 / LAS 见 [docs/model-survey.md](docs/model-survey.md)（历史）；OCR 引擎本身（开源参数量/显存 vs 闭源价格）见 [docs/ocr-survey.md](docs/ocr-survey.md)（历史）。第一期扫描件走 **OCR + 规则**，VLM 非必须；本地化后的主路径与实施顺序见 [CLAUDE.md](CLAUDE.md) 与 [#94](https://github.com/Baldwinzc/docparse/issues/94)。
 
 ```mermaid
 flowchart LR
     IN[字段还空着] --> R{规则能抽到?}
-    R -->|是| SKIP[不调云]
+    R -->|是| SKIP[不调模型]
     R -->|否| KIND{页面类型}
     KIND -->|报关单 / 发票扫描件| A[A 垂直单据 OCR<br/>合合 TextIn]
     KIND -->|扫描件 / 复杂版式| B[B 通用文档解析<br/>火山 LAS 按页]
@@ -92,7 +92,7 @@ flowchart TB
 
     subgraph adapt [可替换适配器]
         PAR[parsers/<br/>ZIP · PDF · Excel · 图片]
-        LLM[llm/ 云 API]
+        LLM[llm/<br/>本地优先 · 云端默认关]
         JOB[jobs/ 任务存储]
         FIL[files/ 文件存储]
     end
@@ -117,7 +117,7 @@ flowchart TB
 |---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 |
 | 安全解压 | `adapters/parsers/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 |
-| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf + TextIn 密钥） |
+| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf）。xlsx / 文字层 PDF 全程不出网；扫描页当前走 TextIn 云 OCR（留空密钥即不外呼），本地引擎随 #99 接入 |
 | 统一文档 IR | `domain/ir.py` | 已定形状 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 |
@@ -125,7 +125,7 @@ flowchart TB
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现 |
-| 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 |
+| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式配置则跳过（本地端点 #101、离线开关 #100） |
 
 完整拆 Issue 顺序见 [docs/modules.md](docs/modules.md)。
 
@@ -160,7 +160,7 @@ python -m docparse.cli declare path/to/file.xlsx  # 组装一张报关单 JSON
 - [流程图](docs/flow.html)（浏览器用 `file://` 打开本地文件）
 - [设计文档](docs/design.md)
 - [模块地图](docs/modules.md)（后期按模块拆 Issue）
-- [云模型调研](docs/model-survey.md)（价格均附来源链接）
+- [云模型调研](docs/model-survey.md)（历史对照，非主路径；价格均附来源链接）
 - [字段 Schema](docs/field-schema.md)
 - [码表加载](docs/code-tables.md)
 - [整单组装](docs/assemble.md)

@@ -1,6 +1,6 @@
 # 模块地图
 
-流程图见 [flow.html](flow.html)。OCR 引擎对照（开源显存 / 闭源价格）见 [ocr-survey.md](ocr-survey.md)（#7）。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
+流程图见 [flow.html](flow.html)。OCR 引擎对照（开源显存 / 闭源价格）见 [ocr-survey.md](ocr-survey.md)（#7，**历史对照**）。本地化约束（本地优先，云端默认关）见 [CLAUDE.md](../CLAUDE.md) 产品约束，实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)。后期每个模块单独建 Issue，在对应 worktree 里实现，不要一次改整条链路。
 
 ```text
 docparse/
@@ -16,7 +16,7 @@ docparse/
 │   ├── extraction/            分类、抽字段、校验
 │   └── adapters/
 │       ├── parsers/           ZIP / PDF / Excel / 图片 / 文本
-│       ├── llm/               云 API
+│       ├── llm/               模型客户端（本地优先，云端默认关）
 │       ├── jobs/              任务存储（内存 + Postgres 预留）
 │       └── files/             文件存储（内存 + S3 预留）
 └── tests/
@@ -28,7 +28,7 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→TextIn OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23） | zip 拼单 |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23）。xlsx / 文字层 PDF 全程不出网；扫描页当前走 TextIn 云 OCR（留空密钥即不外呼），本地引擎随 #99 接入 | zip 拼单 |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
 | 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；伪 sheet 同路径（#23：境外发货人锚点、框表标签 fold_key、多页表头取前、同角色货表接续）；旧锚点仍给无 sheet 的文本 | zip 拼单 |
@@ -39,9 +39,9 @@ docparse/
 | 合单信封 | `api/export_dec.py` + `POST /v1/declare` | Demo `{code,msg,result,dec_results}`（#86）；有单就交 | 新常量 / 别名改 YAML |
 | 对眼页 | `api/static/review.html` + `GET /v1/schema` | 只画报关单 + reviews（#44） | 不渲染 IR |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
-| 云 LLM | `adapters/llm/openai_compat.py` | 未配 Key 则跳过 | 换供应商只改这里 |
+| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式配置则跳过。本地端点 #101、离线开关 #100 | 换供应商 / 换本地引擎只改这里 |
 
-云 API 分层、报价来源和第一期组合见 [model-survey.md](model-survey.md)（#1）。
+模型链路分层与云选型（**历史对照**，成稿于「只走云 API」时期）见 [model-survey.md](model-survey.md)（#1）。本地化约束与实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)：#96 调研 → #97 评测 → #99 接协议 / #100 离线开关 / #101 本地 LLM → #102 交付。
 
 ## 推荐拆 Issue 的顺序
 
@@ -77,7 +77,7 @@ FastAPI 交单（#21 / #86）：`POST /v1/jobs` 与 `cli declare` 走同一条 p
 
 抽取后校验（#20）：规则先写在 [validate-rules.md](validate-rules.md) 给业务确认。位数 / 正则 / 容差确认后再进数据文件，引擎只执行，不编造、不改值。
 
-云 OCR（#22，选型见 [ocr-benchmark.md](ocr-benchmark.md)）：`adapters/parsers/ocr.py` 的 `TextinOcrClient`，密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警不崩。请求带 `straighten=1`，返回的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。40306 QPS 限流按官方说明不重试、只告警。换 OCR 引擎只在 `ocr.py` 加一个 client 实现 `OcrClient` 协议，不动 `pdf.py` / `image.py` / pipeline。
+云 OCR（#22，选型见 [ocr-benchmark.md](ocr-benchmark.md)）：`adapters/parsers/ocr.py` 的 `TextinOcrClient`，密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警不崩、也不发请求。请求带 `straighten=1`，返回的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。40306 QPS 限流按官方说明不重试、只告警。换 OCR 引擎只在 `ocr.py` 加一个 client 实现 `OcrClient` 协议，不动 `pdf.py` / `image.py` / pipeline——本 Issue 的本地引擎（#99）走的就是这条口，云端 TextIn 保留但默认关（#100）。
 
 OCR 版面重建（#62）：`pipeline/steps/reconstruct_layout.py` 挂在 extract 之后、classify 之前。文档有 `pages[].blocks` 且无 `sheets` 时，`adapters/parsers/ocr_layout.py` 按行带聚类 + 分区列切分造伪格子（地址 `p{页}r{行}c{列}`，bbox / block_ids 回指原字块），再复用 `layout.split_sheet` + `sheet_role`。xlsx 已有 sheets 原样跳过。词表 / 刀法零新增。本地对眼：`python -m docparse.cli layout scan.pdf`。
 

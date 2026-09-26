@@ -244,12 +244,12 @@
   <header>
     <div class="kicker">DocParse · 框架阶段</div>
     <h1>单据解析流程</h1>
-    <p class="lead">先对齐这三张图，再写代码、再建仓。主链路是固定流水线；模型只作为某一步里的云 API；持久化先留口子。</p>
+    <p class="lead">先对齐这三张图，再写代码、再建仓。主链路是固定流水线；模型只作为某一步里的函数，且默认走内网端点；持久化先留口子。</p>
   </header>
 
   <div class="locks">
     <div class="lock"><b>不是 Agent</b><span>步骤顺序写死，不引入 LangChain / LangGraph</span></div>
-    <div class="lock"><b>只走云 API</b><span>不部署本地 LLM / VLM / OCR 大模型</span></div>
+    <div class="lock"><b>本地优先，云端默认关</b><span>解析 / OCR / 模型调用默认全在内网；云 API 保留但显式配置才外呼（#94）</span></div>
     <div class="lock"><b>持久化预留</b><span>本阶段内存实现，接口按 Postgres + 对象存储留</span></div>
     <div class="lock"><b>字段仍占位</b><span>等需求方给 PDF / 压缩包和字段清单</span></div>
   </div>
@@ -308,15 +308,15 @@ flowchart TD
       <span class="chip api">规则优先</span>
       <span class="chip api">LLM 兜底</span>
     </div>
-    <p class="note">按字段表逐个处理。规则能抽到就不调模型；只有字段允许 LLM、且已配置 API Key 时才走云接口。抽到的值必须带回原文证据。</p>
+    <p class="note">按字段表逐个处理。规则能抽到就不调模型；云端默认关，只有字段允许 LLM、且已显式配置端点时才发请求。抽到的值必须带回原文证据。</p>
     <div class="diagram">
       <pre class="mermaid">
 flowchart TD
     H0[按字段表逐个字段] --> H1{规则能抽到?}
     H1 -->|是| H2[锚点 / 表头 / 正则]
     H1 -->|否| H3{字段允许 LLM?}
-    H3 -->|是，且已配 API Key| H4[云 API 结构化抽取]
-    H3 -->|否，或未配 Key| H5[标记 missing]
+    H3 -->|是，且已显式配置端点| H4[LLM 结构化抽取<br/>本地端点优先]
+    H3 -->|否，或未配端点| H5[标记 missing]
     H2 --> H6[写入值 + 证据]
     H4 --> H6
     H5 --> H7[进入校验]
@@ -333,7 +333,7 @@ flowchart TD
       </pre>
     </div>
     <div class="legend">
-      <span><i class="dot-api"></i>云 API</span>
+      <span><i class="dot-api"></i>模型端点</span>
       <span><i class="dot-stop"></i>不编造，标缺失</span>
     </div>
   </section>
@@ -353,7 +353,7 @@ sequenceDiagram
     participant Jobs as JobStore
     participant Files as FileStore
     participant P as 固定流水线
-    participant LLM as 云 LLM API
+    participant LLM as 模型端点（本地优先）
 
     U->>API: POST /v1/jobs
     API->>Files: 存原始文件

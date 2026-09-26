@@ -4,13 +4,15 @@
 
 当前阶段：xlsx / xls / PDF（文字层或扫描）/ jpg / png → 一张出口报关单。主链路是固定流水线，不是 Agent。任务存在内存里，进程退出即丢。客户原件不入库。
 
+**部署前提：纯内网可跑，数据不出网**（#94）。xlsx / xls / 文字层 PDF 已全程本地；扫描件 / 图片的**本地 OCR 引擎**在 #99 接入、离线部署包在 #102 交付——在那之前扫描件仍走合合 TextIn，云端默认关，只有显式填了密钥才外呼。
+
 合单请打 **`POST /v1/declare`**。浏览器对眼打 `/v1/jobs`，不要混用信封。
 
 ---
 
 ## 1. 本机部署
 
-需要：Python 3.11+，能访问外网（扫描件走合合 TextIn）。没有 Docker 配方，按单机 uvicorn 即可。解压收到的压缩包，进入项目根目录（有 `pyproject.toml` 的那一层）：
+需要：Python 3.11+，**无需外网**。没有 Docker 配方，按单机 uvicorn 即可。解压收到的压缩包，进入项目根目录（有 `pyproject.toml` 的那一层）：
 
 ```bash
 cd <解压后的项目目录>
@@ -18,8 +20,8 @@ python3.11 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env
-# 扫描件 PDF / 图片：在 .env 填 TextIn（见第 2 节）
-# 只测 xlsx 可以先不填
+# 扫描件 PDF / 图片：本地 OCR 引擎接入（#99）前，先在 .env 填 TextIn（见第 2 节）
+# xlsx / 文字层 PDF 不用填，也不外呼
 
 PYTHONPATH=src uvicorn docparse.api.app:app --host 127.0.0.1 --port 8088
 ```
@@ -52,16 +54,18 @@ CLI 打印的是对眼形状（字段上是名称，带 `_meta`），不是合�
 
 复制 `.env.example` 为 `.env`。前缀一律 `DOCPARSE_`。
 
+**默认不出网**：下面两处云端 Key 都留空时，进程不会发任何外部请求（#94）。要外呼必须显式填。
+
 | 变量 | 何时要 | 没有会怎样 |
 |---|---|---|
-| `DOCPARSE_TEXTIN_APP_ID` | 扫描件 PDF、jpg/png | 流水线不崩；该页没有文字，后续字段空、对眼页 `needs_review` |
+| `DOCPARSE_TEXTIN_APP_ID` | 扫描件 PDF、jpg/png（本地 OCR #99 接入前） | 流水线不崩、**也不外呼**；该页没有文字，后续字段空、对眼页 `needs_review` |
 | `DOCPARSE_TEXTIN_SECRET_CODE` | 同上 | 同上 |
-| `DOCPARSE_LLM_API_KEY` | **本期合单不需要** | 规则抽不到的字段保持空，不调模型 |
-| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | 仅配了 LLM Key 时 | 默认走 OpenAI 兼容口 |
+| `DOCPARSE_LLM_API_KEY` | **本期合单不需要** | 规则抽不到的字段保持空，不调模型，**不外呼** |
+| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | 仅配了 LLM Key 时 | 默认走 OpenAI 兼容口；本地端点（#101）改这里指向内网地址 |
 
-xlsx / 有文字层的 PDF **不必** TextIn。扫描件（半岛 SJ25084373 这类）必须配，否则抽空。
+xlsx / 有文字层的 PDF **不必** TextIn，本来就不出网。扫描件（半岛 SJ25084373 这类）在本地引擎接入（#99）前必须配，否则抽空。
 
-申请：合合 TextIn 开放平台 → 通用文字识别（多页）`https://api.textin.com/ai/service/v2/recognize/multipage`。选型记录见 [ocr-benchmark.md](ocr-benchmark.md)。QPS 超限（官方 40306）只告警不重试。
+申请：合合 TextIn 开放平台 → 通用文字识别（多页）`https://api.textin.com/ai/service/v2/recognize/multipage`。选型记录见 [ocr-benchmark.md](ocr-benchmark.md)（历史基线）。QPS 超限（官方 40306）只告警不重试。**需要纯内网的场景请等 #99 / #102，或先只跑 xlsx 与文字层 PDF。**
 
 不要配、本期也接不上：
 
@@ -262,6 +266,7 @@ Job 里还有 `result.package`（版面 IR），合单不要吃。
 - **俗称转码**（莲塘口岸、纸箱）：码表精确匹配，转不出留原文（#27）。
 - **币制等码表**：客户参数表缺 sheet，有的字段转不出 code。
 - **内存存储**：不能多实例、不能重启后查单。
+- **扫描件的本地 OCR 尚未接入**：目前扫描 PDF / jpg / png 仍走合合 TextIn（云端默认关，不填密钥就不外呼）。纯内网跑扫描件要等 #99 接本地引擎、#102 出离线部署包。xlsx / 文字层 PDF 现在就是纯内网。
 - **不按公司写解析器**：新叫法加 YAML 词表 / 锚点，不要 `if 恒信`。
 - **客户原件不进 git**。测试夹具在 `tests/`，真机样本在对接方本地。
 
@@ -272,7 +277,7 @@ Job 里还有 `result.package`（版面 IR），合单不要吃。
 1. `GET /health`
 2. 上传一份 xlsx 草单（恒信结构即可）→ `code=0`，看 `contrNo`、`tdecGoodsitemsVoArr`、`agentName`
 3. 同一文件再打 `/v1/jobs`，对照中文名和 reviews
-4. 配上 TextIn 后传扫描 PDF（如 SJ25084373）→ 应有 `dec_results`，不再是 `null`
+4. 传扫描 PDF（如 SJ25084373）→ 应有 `dec_results`，不再是 `null`。接本地 OCR（#99）前需在 .env 填 TextIn；填了才外呼，不填只告警
 5. 不传 `file` → 400
 
 字段对不上先看对眼页的格子证据，再对 [field-schema.md](field-schema.md) 的锚点，不要先改合单字段名。
