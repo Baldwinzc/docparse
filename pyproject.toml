@@ -20,10 +20,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "ruff>=0.8", "openpyxl>=3.1", "xlrd>=2.0", "pymupdf>=1.24"]
+dev = ["pytest>=8.3", "ruff>=0.8", "openpyxl>=3.1", "xlrd>=2.0", "pymupdf>=1.24", "pillow>=10.0"]
 pdf = ["pymupdf>=1.24"]
 excel = ["openpyxl>=3.1", "xlrd>=2.0"]
 bench = ["pymupdf>=1.24", "pillow>=10.0"]
+# 本地 OCR 评测台（#108）。重依赖，只在跑数机器上装；本机不装也能跑 pytest / ruff。
+# GPU 机器请先按 Paddle 官方装 paddlepaddle-gpu（PyPI 上没有 GPU 轮子），再装本 extra。
+local-ocr = [
+    "pymupdf>=1.24",
+    "pillow>=10.0",
+    "paddleocr>=3.0",
+    "paddlepaddle>=3.0",
+    "rapidocr>=3.9",
+]
 
 [project.scripts]
 docparse = "docparse.cli:main"
