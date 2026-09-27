@@ -1,8 +1,11 @@
-# 本地引擎选型复核：OCR / 整页方向分类 / 本地 LLM
+# 本地引擎选型复核：OCR / 整页方向分类 / 版面分析 / 本地 LLM
 
-对应 Issue：[#96](https://github.com/Baldwinzc/docparse/issues/96)（父 Epic [#94](https://github.com/Baldwinzc/docparse/issues/94) 数据不出网）
+对应 Issue：[#96](https://github.com/Baldwinzc/docparse/issues/96)（父 Epic [#94](https://github.com/Baldwinzc/docparse/issues/94) 数据不出网）；[#106](https://github.com/Baldwinzc/docparse/issues/106) 二次复核补课
 
-**核对日期：2026-09-26。** 下表的体积 / 显存 / 精度 / 许可证都在这一天打开官方页面或官方仓库读到原文；价格与版本会动，实现前再点一次 §7 的链接。
+**核对日期：2026-09-26；2026-09-27 按 [#106](https://github.com/Baldwinzc/docparse/issues/106) 二次复核。** 下表的体积 / 显存 / 精度 / 许可证都在核对日打开官方页面或官方仓库读到原文；价格与版本会动，实现前再点一次 §7 的链接。
+
+> **#106 二次复核补了什么**：① 补 2026 上半年的轻量端到端 OCR-VLM（GLM-OCR / Surya 2 / LightOnOCR-2-1B / DeepSeek-OCR 2 / granite-docling / PaddleOCR-VL-1.6）；② **§4 扩成「结构解析：版面分析 + 表格结构识别」**，新增版面分析（PP-DocLayoutV2/V3）与第三方表格结构对照；③ MinerU 在 §1.4 留痕；④ **修掉两处过强推断**（§1.3 方向分类的淘汰判据、§2.1 的跨代比较）与 §2.4 Tesseract 的简化描述。
+> **二次复核否掉的两条外部说法**（证据见 [#106](https://github.com/Baldwinzc/docparse/issues/106)）：MinerU **不是 AGPL-3.0**，是 Apache-2.0 + 附加条款；DeepSeek-OCR 2 **不是 MIT**，是 Apache-2.0。与官方原文冲突的说法，本文件一律以官方原文为准 —— 这正是「读到原文才算已核对」这条约定的用处。
 
 > **阅读约定（沿用 [ocr-survey.md](ocr-survey.md)）**
 >
@@ -19,7 +22,7 @@
 | [model-survey.md](model-survey.md)（#1） | 云解析链路分层（垂直单据 / 按页解析 / LLM） | **历史对照**，成稿于「只走云 API」时期 |
 | [ocr-survey.md](ocr-survey.md)（#7） | 云 + 开源 OCR 泛览（参数量 / 显存 vs 价格） | **历史对照**；它的开源数字是本文的起点，但版本已推进（见 §2.1） |
 | [ocr-benchmark.md](ocr-benchmark.md)（#60） | 四个云引擎实测 | **云基线**，#97 的本地引擎要与它同表并列 |
-| **本文**（#96） | 本地跑什么：候选池 + 判据 + 落点 | 供 #97 评测、#99 接入、#100 开关、#101 LLM 引用 |
+| **本文**（#96 / #106） | 本地跑什么：候选池 + 判据 + 落点 | 供 #97 评测、#99 接入、#100 开关、#101 LLM 引用 |
 
 **本文不做选型定论。** 模型值不值得推荐要看 #97 在真机样本上的实测效果，不能凭厂商介绍页下结论。本文只回答三件事：
 
@@ -40,7 +43,7 @@
 | **真·内容旋转页（镇发 HKG25003373MUC p1，内容旋转 90°）不能乱码** | [#103](https://github.com/Baldwinzc/docparse/issues/103) | #60 选 TextIn 的决定性理由就是这一页；百度 / 阿里云在这一页直接乱码。旋转页与平放页**分开呈现**，不得混进平均分 |
 | **半岛 SJ25084373 表头字段命中不下降** | #60 基线（10 字段）、#23 口径 | 毛重 1459.62 / 净重 485 / 件数 214 / 备案号 T5352W000228 / 境外发货人 Peninsula Merchandising Limited |
 | **商品表行结构正确** | #60 §3.3（参照 19 商品行） | 行切分错则 #62 伪格子与规则链一起崩，字段再准也没用 |
-| **许可证允许商用** | 本文 §2、§3、§5 | 权重受限的（如 Surya）在表里标红，不进首轮 |
+| **许可证允许商用** | 本文 §2、§3、§4、§5、§6 | 权重受限的（如 Surya）在表里标红，不进首轮 |
 
 ### 1.2 进 #97 首轮的候选
 
@@ -67,6 +70,8 @@
 | **vLLM** | 内网 OpenAI 兼容端点的事实标准，`/v1/chat/completions` 与现有 `OpenAICompatClient` 对齐 |
 | **Ollama** | 装机最轻，OpenAI 兼容子集含 `/v1/chat/completions`；作「不想起 GPU 服务」的退路 |
 
+**不在首轮、但要盯着的（2026 上半年新一档）：** GLM-OCR、Surya 2、LightOnOCR-2-1B 这一批轻量端到端 OCR-VLM，体量已经压到 **0.65–1B**，与 PaddleOCR-VL 同档，中文与表格都在官方口径里（§2.6 有核过的数字）。它们**仍是 VLM**，按 #11 冻结的「第一期 OCR + 规则」只作对照；但这一档体积已经落到「单卡甚至 CPU 能跑」的区间，**如果 #97 证明传统 OCR + 规则在密集表上过不去，第一个回头的就是它们**——所以现在就要有官方数字备着，而不是到时候从头查。
+
 ### 1.3 各候选的淘汰判据
 
 | 候选 | 什么情况直接淘汰 |
@@ -75,8 +80,9 @@
 | PP-OCRv6 `tiny` | 密集商品表行切分明显劣于 `small`（官方表格场景分 tiny 94.7 vs small 95.6，差距小，必须实测确认） |
 | PP-OCRv5 | v6 在**同样样本**上不劣于它 → 直接淘汰，不留双版本 |
 | RapidOCR | 与 PaddleOCR 输出不一致（bbox 或行切分对不上），或补不上整页方向分类（§3.4 已核实它官方没有 doc_ori） → 降级为「只在装不上 Paddle 时用」 |
-| 方向分类模型 | 只在镇发 p1 上验证；**若加了方向分类后旋转页仍乱码，说明问题不在方向而在识别本身**，要换的是 OCR 引擎不是方向模型 |
+| 方向分类模型 | 只在镇发 p1 上验证。**若加了方向分类后旋转页仍乱码，不能直接判定「识别模型不行」**——角度判错、旋转方向搞反、裁切、坐标变换都会产生同样的乱码。必须先做一组**人工指定正确角度**的对照实验（跳过方向分类、直接把图转到正确角度再喂 OCR），把「方向层的问题」和「识别层的问题」分开，再决定换方向模型还是换 OCR 引擎（§3.3） |
 | EasyOCR / Tesseract | 进入首轮前若仍无官方表格或方向口径 → 只留对照，不进主路径 |
+| 版面分析模型（§4.1） | 不是首轮项：现有 #62 用字块聚类造伪格子、规则链已跑通。**只有** #97 证明字块路线在密集表上不够、或出现多栏 / 图文混排 / 跨页阅读顺序这类「伪格子天然表达不了」的版面时，才回头看它 |
 | vLLM | 目标机器无 NVIDIA 卡 / 显存不足 → 换 Ollama 或直接不做本地 LLM（#101 本来就是默认关） |
 
 ### 1.4 被排除的候选与理由
@@ -85,9 +91,10 @@
 |---|---|
 | **TrOCR**（microsoft/unilm） | 官方定位是**单文本行**识别（"single text-line images"），无检测、无版面、无表格；官方模型与 benchmark 全是英文场景，**不支持中文**。且 `trocr-base-printed` / `-large-printed` 的 HF 模型卡**没有 license 字段**，可商用性无官方声明。不进首轮 |
 | **OpenOCR 的 OpenDoc-0.1B / UniRec-0.1B** | 官方自己在文档里用词是 **Vision-Language Model**，属于 §2.6 那一类，与「VLM 非必须」冲突。OpenOCR 的 SVTRv2 det+rec 主系统可以留作对照，但官方**没有**给表格专项指标，优先级低于 Paddle 系 |
-| **Surya** | 代码 Apache-2.0，**权重是修改过的 AI Pubs Open Rail-M**，商用要买授权（详见 §2.6） |
-| **olmOCR / DeepSeek-OCR / GOT-OCR2.0** | 官方口径就是「要独立 GPU 的中大模型」，与「第一期 OCR + 规则」冲突，见 [ocr-survey.md](ocr-survey.md) §2.3 与 §2.6 |
-| **EasyOCR / Tesseract** | 见 §2.3 / §2.4：官方均未给表格能力口径，Tesseract 官方定位是行识别。留作对照，不进首轮 |
+| **Surya 2** | 代码 Apache-2.0，**权重是修改过的 AI Pubs Open Rail-M**：「free for research, personal use, and startups under $5M funding/revenue」，更大范围商用要买授权——**这是条件式许可，不是一刀切「要买授权」**（当前官方原文口径，见 §2.6） |
+| **olmOCR / DeepSeek-OCR / DeepSeek-OCR 2 / GOT-OCR2.0** | 官方口径就是「要独立 GPU 的视觉语言模型」，与「第一期 OCR + 规则」冲突，见 [ocr-survey.md](ocr-survey.md) §2.3 与 §2.6。DeepSeek-OCR 2（2026-01）体积仍按大模型算（bf16 权重约 6.78 GB），排除理由不变 |
+| **MinerU**（[opendatalab/MinerU](https://github.com/opendatalab/MinerU)） | 文档解析领域的事实标准之一，**必须留痕**：许可是 **Apache-2.0 + 附加条款**（不是 AGPL）。附加条款两条——MAU >1 亿或月收入 >$2000 万需单独商业授权；对第三方提供在线服务须显著署名。**排除理由不是许可，是定位**：它是完整文档解析流水线（自带版面/表格/公式与 Markdown 输出），与本项目「字块 → 伪格子 → 自家规则链」的路径重叠但不可替换，接进来等于换掉 #62 与规则链。结论：第一期不接，只留作对照与后续调研 |
+| **EasyOCR / Tesseract** | 见 §2.3 / §2.4：官方均未给表格能力口径；Tesseract 官方 LSTM 引擎定位是行识别**但另有 psm 页面分割与 OSD**，缺的是表格结构能力。留作对照，不进首轮 |
 
 ---
 
@@ -135,10 +142,12 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 | PP-OCRv5_server | **97.1** | 80.0 | 94.5 |
 | PP-OCRv5_mobile | 92.8 | **64.7** | 90.5 |
 
-两点直接可用的结论：
+⚠️ **下面两条是「待验证线索」，不是结论。** 官方已注明 PP-OCRv6 的指标来自内部多场景评估集，**与 v5 的数不能直接比**——同一张表里的跨代数字只能用来决定「先测什么」，不能用来判优劣：
 
-- **表格场景检测上 v5_server（97.1）仍略高于 v6_medium（96.8）**，所以「v6 全面更好」这句不能直接信，要用自家密集商品表实测决定；
-- **旋转场景 v5_mobile（64.7）明显塌**，v6_medium（93.8）反而好——如果最终选 v5 系，旋转页风险更高。
+- **表格场景检测**：v5_server 97.1 / v6_medium 96.8 —— 两者差距（0.3）远小于跨代口径的不可比程度，**不足以支持「v6 在表格上不如 v5」**，只能说明「v5_server 值得留在首轮」；
+- **旋转场景检测**：v5_mobile 64.7 明显低于 v6_medium 93.8 —— 这一条差距大（29 个点），但仍必须**在同一批旋转样本上实测**才能成立；在实测之前，它只是「v5_mobile 的旋转页要重点看」的提醒。
+
+**要下这两条的结论，唯一的路是 #97 在自家密集表与旋转页上同批实测。** 本文不替它下。
 
 注意这是**检测**指标（字块找得准不准），不是表格结构还原；密集表的结构还原仍由 #62 伪格子 + 规则链负责，见 §4。
 
@@ -228,9 +237,9 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 | 许可证 | **Apache-2.0**（代码 + tessdata_best README 原文「All data in the repository are licensed under the Apache-2.0 License」） | 已核对 |
 | 中文密集表格能力 | **官方未提及，且定位相反**：README 原文「a neural-net (LSTM) engine **which is focused on line recognition**」，全文无 table structure 字样 | 已核对原文 |
 
-结论：**只作对照。** 它是行识别引擎，密集商品表要自己接检测 + 版面 + 表格结构，等于把 #62 整条重做一遍。
+结论：**只作对照。** 准确的定位是——官方 LSTM 引擎做的是**行识别**，但 tesseract 本身**有** psm 页面分割（`--psm 0` 起有 OSD、`1`/`12` 带 OSD 的自动分割、`3` 全自动分割等，见官方 [ImproveQuality](https://github.com/tesseract-ocr/tessdoc/blob/main/ImproveQuality.md#page-segmentation-method)）与 `osd` 方向检测；**它缺的是表格结构能力**，不是「没有版面概念」。密集商品表仍要自己接检测 + 版面 + 表格结构，等于把 #62 整条重做一遍，所以不进首轮。
 
-**顺带一条对 #103 有用的：** Tesseract 有官方 `osd`（Orientation and Script Detection）数据，`--psm 0` 可输出整页方向——如果最后不选 Paddle 系，OSD 是一个可考虑的独立方向方案（见 §3.1 第三类）。
+**顺带一条对 #103 有用的：** Tesseract 有官方 `osd`（Orientation and Script Detection）数据，`--psm 0` 只做整页方向与文字方向检测——如果最后不选 Paddle 系，OSD 是一个可考虑的独立方向方案（见 §3.1 第二类）。
 
 ### 2.5 补充候选（经典 + 最新）
 
@@ -239,18 +248,28 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 | **CnOCR**（[breezedeus/CnOCR](https://github.com/breezedeus/CnOCR)） | 识别：12 M / 25 M / 82 M（自有 densenet 系），另有 PP-OCRv6 系 4.3 / 20 / 73 M；检测 1.7 M–108 M | **官方未给**（只说 CPU 用 `ort-cpu`、GPU 用 `ort-gpu`） | 代码 **Apache-2.0**；HF 上 `breezedeus/cnocr-*` 开权重同为 apache-2.0，另有模型仓未标 license；**官方 README 写明 `densenet_lite_246-gru_base` 先供知识星球会员（一个月后开源）、`densenet_lite_666-gru_large` 是 Pro 模型购买后可用** | **官方未提及**（场景只分 scene / doc / number / general） | 已核对 README 与仓库 license |
 | **OpenOCR / SVTRv2**（[Topdu/OpenOCR](https://github.com/Topdu/OpenOCR)） | 官方 Release：`openocr_rec_model.onnx` **25.14 MB**、`openocr_det_model.onnx` **12.42 MB**、`openocr_det_repvit_ch.pth` 12.73 MB | **官方未给**（只给 CPU / GPU 启动命令） | **Apache-2.0**（仓库）；部分 HF 权重仓未标 license | 主系统无表格专项指标；表格能力在 OpenDoc-0.1B，而官方称其为 **VLM**（见 §2.6） | 已核对 Release 资产与 license |
 | **TrOCR**（[microsoft/unilm](https://github.com/microsoft/unilm)） | `trocr-base-printed` **1271.6 MB**、`trocr-large-printed` **2319.9 MB**（safetensors） | **官方未给** | 仓库 MIT；**`-printed` 权重模型卡无 license 字段** | **不支持中文**，官方 benchmark 全为英文（IAM / SROIE） | 已核对，**已排除**（§1.4） |
-| **PaddleOCR-VL**（[模型卡](https://huggingface.co/PaddlePaddle/PaddleOCR-VL)） | `model.safetensors` **1.83 GB** + 版面模型 `PP-DocLayoutV2` 202 MB | **官方未给**（推荐 vLLM 部署） | **apache-2.0** | 官方称 SOTA 文档解析，含表格 / 公式 / 图表；**但它是 VLM**，见 §2.6 | 已核对 HF 模型卡与文件列表 |
+| **docTR**（[mindee/doctr](https://github.com/mindee/doctr)） | 官方未给权重体积（模型按架构名随用随下） | **官方未给** | **Apache-2.0**（仓库）；权重随仓库发布 | 官方文档列出的识别架构为 CRNN / SAR / MASTER / ViTSTR / PARSeq / ViPTR，**官方未把中文列为预训练语言** | 已核对仓库 license 与模型清单 |
+
+**要补的一条候选判据（来自 #106）：** docTR 是**非 Paddle 系**的完整两阶段 det+rec 管线（PyTorch，支持 ONNX），当前首轮四个 OCR 候选**本质上都在比 Paddle 权重的版本与推理封装**（PaddleOCR v5/v6 + RapidOCR）。补 docTR 的价值是给「Paddle 权重这条路整个不成立」时留一条技术路线不同的退路。**但它的中文能力官方没有背书**——要进 #97 得先自测中文，测不过就只留对照，别为了「候选多样性」占评测工期。
 
 ### 2.6 端到端 OCR-VLM（对照用，不进第一期主路径）
 
 与「第一期 OCR + 规则，VLM 非必须」冲突：它们直接出字，显存和运维按大模型算。#97 只在「传统 OCR 路线被证伪」时才回头看这一档。
 
-| 模型 | 官方规模 | 权重 / 仓库体积 | 许可证 | 核验 |
-|---|---|---|---|---|
-| **PaddleOCR-VL** | 0.9B VLM（ERNIE-4.5-0.3B + NaViT 视觉编码器） | 1.83 GB + 版面 202 MB | **apache-2.0** | 已核对 |
-| **dots.ocr**（[模型卡](https://huggingface.co/rednote-hilab/dots.ocr)） | 1.7B LLM 底座，官方称 SOTA | 仓库 **5.67 GB** | **MIT** | 已核对 |
-| Surya | 650M（[ocr-survey.md](ocr-survey.md) 已核） | 官方未给固定体积 | ⚠️ **代码 Apache-2.0，权重是修改过的 AI Pubs Open Rail-M**：README 原文「free for research, personal use, and startups under $5M funding/revenue」，更大范围商用要走 [定价页](https://www.datalab.to/pricing)。**标红：商用前必须过法务** | 已核对 README |
-| olmOCR / DeepSeek-OCR / GOT-OCR2.0 | 7B / 3B MoE / 580M | 见 [ocr-survey.md](ocr-survey.md) §2.3 | 各自见原文 | 沿用 #7 结论 |
+**2026 上半年这一档的体量已经明显下来**（0.65B–1.7B），和 2025 年那批 7B 级不是一回事，所以单列一张表：
+
+| 模型 | 官方规模 | 权重体积 | 许可证 | 官方中文 / 表格口径 | 核验 |
+|---|---|---|---|---|---|
+| **PaddleOCR-VL-1.6**（[模型卡](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6)） | **0.9B** | `model.safetensors` **1828.4 MB** | **apache-2.0** | 官方称 OmniDocBench **v1.6 达 96.33%**，在 v1.5 与 Real5-OmniDocBench 上也刷新记录；架构与 1.5 完全兼容 | 已核对 HF 模型卡（2026-05-27 建仓，官方 2026.05.28 发布） |
+| **GLM-OCR**（[模型卡](https://huggingface.co/zai-org/GLM-OCR)） | **0.9B**（模型卡另提 GLM-0.5B 语言解码器——那是组件，不是全模型） | `model.safetensors` **2527.8 MB** | **MIT** | 官方原文「Achieves a score of **94.62** on OmniDocBench V1.5, ranking #1 overall」；管线用 **PP-DocLayout-V3**（Apache-2.0）；官方称支持 **vLLM / SGLang / Ollama** 部署 | 已核对 HF 模型卡（2026-01-30 建仓）。**注意**：官方只写 Markdown / JSON 结构化输出，**没有「表格输出 HTML」的说法** |
+| **Surya 2**（[仓库](https://github.com/datalab-to/surya)） | 0.65B，官方 benchmark 行名「Surya OCR 2」 | 官方未给固定体积 | ⚠️ **代码 Apache-2.0，权重是修改过的 AI Pubs Open Rail-M**：README 原文「free for research, personal use, and startups under **$5M funding/revenue**」，更大范围商用要走 [定价页](https://www.datalab.to/pricing)。**标红：条件式许可，商用前过法务**（口径截至复核日**未变**，不要写成「已放开」或「一律要买授权」） | 官方原文：「**Surya 2 runs layout, OCR, and table recognition through a single VLM**」——一个模型做版面 + OCR + 表格（含阅读顺序），这是它相对上表其他项最实质的差异 | 已核对 README |
+| **LightOnOCR-2-1B**（[模型卡](https://huggingface.co/lightonai/LightOnOCR-2-1B)） | 1B，官方称「end-to-end 1B-parameter vision-language model」 | 官方未给固定体积 | **apache-2.0** | 官方支持 en/fr/de/es/it/nl/pt/sv/da/**zh**/ja。官方速度口径是「**3.3× faster than Chandra OCR**」（Chandra 为 9.0B）——**限定语不能抹掉**，它不是泛指「比 9B 级快 3.3 倍」 | 已核对模型卡。**olmOCR-bench 83.2 不是它自己模型卡的数**，出自 Surya README 的对照表（该表自注口径不可直接比），引用时要带出处 |
+| **DeepSeek-OCR 2**（[模型卡](https://huggingface.co/deepseek-ai/DeepSeek-OCR-2)） | 官方模型卡**未标参数量**；bf16 权重约 **6.78 GB** | 6.78 GB | **apache-2.0**（**不是 MIT**） | 官方未给中文 / 表格专项数字 | 已核对 HF front-matter 与权重文件（2026-01-27 建仓）。体积仍按大模型算，排除理由不变 |
+| **granite-docling-258M**（[模型卡](https://huggingface.co/ibm-granite/granite-docling-258M)） | **258M**（Idefics3 架构；视觉编码器 siglip2-base-patch16-512 + **Granite 165M** LLM） | 官方未给固定体积 | **apache-2.0** | 官方表 **FinTabNet 150dpi**：TEDS(structure) **0.97** / TEDS(w/content) **0.96**——**这是本档里唯一给到「含内容」表格分的**；官方写「**Japanese, Arabic and Chinese support (_experimental_)**」，中文是实验性 | 已核对模型卡（官方 Release Date 2025-09-17）。**「约 0.5 GB 显存 / 笔记本可跑」官方未给**，模型卡无任何显存数字 |
+| **dots.ocr**（[模型卡](https://huggingface.co/rednote-hilab/dots.ocr)） | 1.7B LLM 底座，官方称 SOTA | 仓库 **5.67 GB** | **MIT** | 官方称多语言文档解析；部署推荐 vLLM | 已核对 |
+| olmOCR / DeepSeek-OCR（初代） / GOT-OCR2.0 | 7B / 3B MoE / 580M | 见 [ocr-survey.md](ocr-survey.md) §2.3 | 各自见原文 | 见 #7 | 沿用 #7 结论 |
+
+ **这张表怎么用：** 第一期不选它们，但**如果 #97 的结论是「传统 OCR + 规则在密集商品表上过不去」，回头的顺序就是这张表从上到下**——先试体积最小、官方中文/表格口径最全的（GLM-OCR 与 PaddleOCR-VL-1.6 同为 0.9B 且都带官方表格口径；granite-docling 有含内容的 TEDS，但中文是实验性）。Surya 2 的「一个模型做三件事」是架构上最省事的一条，但权重许可要先过法务。
 
 ---
 
@@ -280,6 +299,20 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 - **镇发那种（无元数据、内容真的转了 90°）**：百度 / 阿里云直接乱码，TextIn 靠 `straighten=1` 返回 `angle=90` 自动转正——**这才是 #60 的分水岭**。
 - 换本地引擎后，**没有 `straighten` 这种东西**，必须自己先判方向。不补这层，镇发 p1 会原样复现乱码。
 
+**⚠️ 乱码怎么归因（#106 修正，这条是方法，不是结论）：** 旋转页出现乱码，**不能直接判成「识别模型不行」**。同一个现象至少有四个来源：① 方向分类角度判错；② 旋转方向搞反（90 转成 270）；③ 转正后裁切范围错了；④ OCR 像素 → 页面 pt 的坐标变换错。**正确的做法是先做一组对照实验**：
+
+```text
+A 组：不走方向分类，人工把图转到正确角度再喂 OCR   ← 识别层的能力上限
+B 组：走方向分类，让它自己判                        ← 端到端真实表现
+C 组：走方向分类但把判定角度换成人为指定的正确值     ← 只隔离「方向模型判错」这一项
+```
+
+- A 组过、B 组不过、C 组过 → **方向模型的锅**，换/调方向分类，不动 OCR；
+- A 组就不过 → 才是**识别层的锅**，换 OCR 引擎；
+- A 组过、C 组也不过 → 问题在**转正后的裁切或坐标变换**，是 #99 的接入实现，不是任何一个模型。
+
+**在跑完这三组之前，不要写「某引擎在旋转页不行」的结论。**
+
 ### 3.4 已核实的缺口
 
 **RapidOCR 官方模型清单里没有任何 `doc_ori` 模型**——已核对 `default_models.yaml` 全文，`doc_ori` 出现 0 次，`cls` 只有文本行方向（0/180）与老的 v2.0 cls。**文本行方向 ≠ 整页方向**：前者纠正的是行内倒置，后者纠正的是整页转 90°。
@@ -292,9 +325,28 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 
 ---
 
-## 4. 密集表格的结构识别（备选，非第一期主路径）
+## 4. 结构解析：版面分析 + 表格结构识别（备选，非第一期主路径）
 
-### 4.1 官方模型（已核对 PaddleOCR 表格结构识别模块）
+这一节管的是「字块 → 结构」那一步。#62 现在用**字块聚类造伪格子**把它整个跳过了；下面两类模型是「跳过这一步不够用」时的备选。
+
+### 4.1 版面分析（layout）
+
+版面分析做两件事：把页面切成语义区域（文本段 / 标题 / 表格 / 公式 / 图片…），以及**恢复阅读顺序**。它不是 OCR，输入是页面图，输出是区域框 + 类别 + 顺序。
+
+| 模型 | 存储体积 | 官方精度 | 许可证 | 核验 |
+|---|---|---|---|---|
+| **PP-DocLayoutV2**（[模型卡](https://huggingface.co/PaddlePaddle/PP-DocLayoutV2)） | **203.8 MB**（官方文档）/ HF `inference.pdiparams` 202.3 MB | **mAP(0.5) 81.4%** | **apache-2.0** | 已核对官方 [版面分析模块文档](https://www.paddleocr.ai/latest/version3.x/module_usage/layout_analysis.html) |
+| **PP-DocLayoutV3**（[模型卡](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3)） | **官方文档未给**；HF `inference.pdiparams` **124.7 MB** | **官方文档未给**；官方只给了速度（`paddle_static` 端到端 **72.33 ms**） | **apache-2.0** | 已核对 HF 模型卡；体积与精度**官方未给** |
+
+**官方评估口径（已核对 V2 那行）**：自建版面区域检测数据集，**1000 张**中英文论文 / 杂志 / 报纸 / 研报 / PPT / 试卷 / 课本等，**25 类**版面元素（文档标题、段落标题、文本、竖排文本、页码、摘要、目录、参考文献、脚注、图像脚注、页眉、页脚、页眉图像、页脚图像、算法、行内公式、行间公式、公式编号、图像、表格、图/表标题、印章、图表、侧栏文本、参考文献内容）。
+
+**⚠️ 官方文档自相矛盾（引用前必读）**：同一份 `layout_analysis.md` 里，正文写「**该模块目前仅支持 PP-DocLayoutV2 一个模型**」，而快速开始与 Python 示例**全部用 `PP-DocLayoutV3`**，速度表里也两代都列。**引用体积 / 精度时只能引 V2 那行，别把 V2 的数字安到 V3 上**；V3 的体积与精度以官方后续更新为准，本文不替它填。
+
+**为什么现在要单独记这一节：** 它是**下游新一档 VLM 的公共组件**——GLM-OCR 官方管线用的就是 PP-DocLayout-V3（§2.6），PaddleOCR-VL 系同理。也就是说，如果哪天要走 VLM 路线，**版面模型是会被一起带进来的**，现在把它记清楚，免得那时候才发现这一层也要过许可证与体积的账。
+
+**第一期怎么处理：** 跟 #62 的关系说清楚——#62 的伪格子是**从字块位置反推格子**，不做区域分类、不恢复阅读顺序；对报关单这种「表头 KV + 一张商品表」的结构够用，而且已经跑通。版面分析要解决的是**多栏、图文混排、跨页阅读顺序**这类场景，**报关单不是**。所以：不进首轮，触发条件与下一节表格结构相同。
+
+### 4.2 表格结构识别
 
 | 模型 | 存储体积 | 官方精度（%） | 官方 GPU 时延 | 备注 |
 |---|---|---|---|---|
@@ -304,20 +356,24 @@ PP-OCRv6 官方给了按场景拆的检测 Hmean 表，**其中就有独立的�
 
 来源：[表格结构识别模块](https://www.paddleocr.ai/latest/version3.x/module_usage/table_structure_recognition.html)。**官方列名只写「精度（%）」，未写明指标定义**（业内通常是 TEDS，但官方没写，本文件不替它认定）。输出是表格区域的 HTML 结构。
 
-**其他来源（补充候选）：**
+**非 Paddle 系对照（检验 SLANeX 的 69.65% 在外部口径下是什么位置）：**
 
-| 候选 | 体积 | 许可证 | 核验 |
-|---|---|---|---|
-| [RapidTable](https://github.com/RapidAI/RapidTable) | 官方未给（包装 PP-Structure / ModelScope 算法） | Apache-2.0 | 已核对 license |
-| [Table Transformer (TATR)](https://huggingface.co/microsoft/table-transformer-structure-recognition) | `model.safetensors` **110.1 MB**（结构识别）/ **110.0 MB**（检测） | **MIT** | 已核对 HF 模型卡 |
+| 候选 | 体积 | 许可证 | 官方表格指标 | 核验 |
+|---|---|---|---|---|
+| [RapidTable](https://github.com/RapidAI/RapidTable) | 官方未给（包装 PP-Structure / ModelScope 算法） | Apache-2.0 | 官方未给 | 已核对 license |
+| [Table Transformer (TATR)](https://huggingface.co/microsoft/table-transformer-structure-recognition)（Microsoft） | `model.safetensors` **110.1 MB**（结构识别）/ **110.0 MB**（检测） | **MIT** | 官方未给（经典 2021 模型，英文文档为主） | 已核对 HF 模型卡 |
+| **TableFormer**（Docling 内置） | **官方未给**（`ds4sd/tableformer` 模型仓**未标 license 字段**） | ⚠️ **代码 MIT（Docling 本体），但 TableFormer 权重仓无 license 声明**——**标红：要用先过法务** | 官方未给 | 已核对 HF 仓库（无 license）与 Docling 仓库（MIT） |
+| **granite-docling-258M** | 258M 参数 | **apache-2.0** | **FinTabNet 150dpi：TEDS(structure) 0.97 / TEDS(w/content) 0.96** | 已核对模型卡（§2.6） |
 
-### 4.2 为什么第一期不上
+第三行那条要特别注意：**官方口径里唯一给了「含内容」TEDS 的是 granite-docling（0.96）**，但它是端到端 VLM，不是可插拔的表格结构模块；而真正可插拔的 TableFormer 权重仓**没有 license 声明**。这一格正好说明为什么第一期不该急着换：现有的字块路线**没有任何许可悬空**。
 
-1. **现有路线已经跑通且不依赖它**：[ocr_layout.py](../src/docparse/adapters/parsers/ocr_layout.py) 按行带聚类 + 分区列切分造伪格子，复用 [layout.py](../src/docparse/adapters/parsers/layout.py) 的 `split_sheet` 与现成版面刀（#62 / #23 已收口）。加表格结构识别是**加一个新引擎**，不是加一条新规则，动静比改 YAML 大得多。
-2. **它换掉的是「字块 → 格子」这一步，而这一步现在同时喂着表头 KV 和商品表**；换掉要连 #62、#23 的验收一起重做。
-3. **官方精度口径不透明**（只写「精度（%）」），拿它替换一条已有实测背书的链路，性价比要先算。
+### 4.3 为什么第一期不上（版面分析与表格结构同一条）
 
-**触发条件（写清什么时候才回头看它）：** #97 在镇发 / 半岛 / 补充测试的密集商品表上，若「行切分 / 列归属」错误占到字段错误的主因，且调版面刀治不好，再上 SLANet_plus 做 A/B。**在那之前不加依赖。**
+1. **现有路线已经跑通且不依赖它**：[ocr_layout.py](../src/docparse/adapters/parsers/ocr_layout.py) 按行带聚类 + 分区列切分造伪格子，复用 [layout.py](../src/docparse/adapters/parsers/layout.py) 的 `split_sheet` 与现成版面刀（#62 / #23 已收口）。加这两类模型都是**加一个新引擎**，不是加一条新规则，动静比改 YAML 大得多。
+2. **它们换掉的是「字块 → 格子」这一步，而这一步现在同时喂着表头 KV 和商品表**；换掉要连 #62、#23 的验收一起重做。
+3. **官方精度口径不透明**（表格结构只写「精度（%）」；版面分析的 V3 干脆没给体积与精度），拿它替换一条已有实测背书的链路，性价比要先算。
+
+**触发条件（写清什么时候才回头看它）：** #97 在镇发 / 半岛 / 补充测试的密集商品表上，若「行切分 / 列归属」错误占到字段错误的主因，且调版面刀治不好，再上 SLANet_plus 做 A/B；**版面分析的触发条件更靠后**——只有出现多栏 / 图文混排 / 跨页阅读顺序这类「伪格子天然表达不了」的版面时才需要。**在那之前不加依赖。**
 
 ---
 
@@ -380,8 +436,11 @@ Ollama 官方模型页给了**确定的文件体积**（已核对 [ollama.com/li
 | 本地 OCR 引擎 | `adapters/parsers/local_ocr.py` + `config.py`（#99） | `pdf.py` / `image.py` / `ocr_layout.py` / pipeline / extraction / schema |
 | 离线开关 | `config.py` + 两个 client 的前置检查（#100） | 流水线结构 |
 | 本地 LLM 端点 | `config.py` + `adapters/llm/openai_compat.py`（#101） | `complete_json` 协议、`fields.yaml` 的 `llm` extractor 开关状态 |
+| 版面分析 / 表格结构（§4，**备选**） | 若启用，是在 `ocr_layout.py` **之前或替代**它插一个步骤，并把区域框写进 IR | 若真做，`ocr_layout.py` 与 #62 验收要一起重做——不是「加个 adapter」那么轻 |
 
 **出网点只剩两个，且都默认关：** 云 OCR（TextIn）与云 LLM。xlsx / xls、文字层 PDF、版面重建、抽取、组装、校验、FastAPI 全程不出网（已核对 [#94](https://github.com/Baldwinzc/docparse/issues/94) 的出网点盘点）。
+
+**#99 的接入边界（一句话）：** 只换 `OcrClient` 的实现与 `config.py` 的档位，**上面这条链路一个字都不用改**——方向分类作为本地 client 的前置步骤塞在 `local_ocr.py` 里面，伪格子与版面刀看不到它。这也是 §3.5 那条坐标约定必须守住的原因。
 
 ---
 
@@ -391,12 +450,15 @@ Ollama 官方模型页给了**确定的文件体积**（已核对 [ollama.com/li
 2. [PP-OCRv5 算法页](https://www.paddleocr.ai/latest/version3.x/algorithm/PP-OCRv5/PP-OCRv5.html)（产线峰值 VRAM）
 3. [OCR pipeline 模型总表](https://www.paddleocr.ai/latest/version3.x/pipeline_usage/OCR.html)（体积 / 精度 / 模块时延）
 4. [文档方向分类模块](https://www.paddleocr.ai/latest/version3.x/module_usage/doc_img_orientation_classification.html)
-5. [表格结构识别模块](https://www.paddleocr.ai/latest/version3.x/module_usage/table_structure_recognition.html)
-6. [RapidOCR 模型清单 default_models.yaml](https://github.com/RapidAI/RapidOCR/blob/main/python/rapidocr/default_models.yaml)（版本与 SHA256）
-7. [RapidOCR MODEL_LICENSES.md](https://github.com/RapidAI/RapidOCR/blob/main/python/MODEL_LICENSES.md)（权重许可）
-8. [Surya 权重许可](https://github.com/datalab-to/surya)（OpenRAIL-M 限制条件，商用前必读）
-9. [vLLM 在线服务文档](https://docs.vllm.ai/en/latest/serving/online_serving/) 与 [CLI 参考](https://docs.vllm.ai/en/latest/cli/serve.html)（端点、默认参数）
-10. [Ollama OpenAI 兼容文档](https://docs.ollama.com/api/openai-compatibility)（支持的端点子集）
+5. [版面分析模块](https://www.paddleocr.ai/latest/version3.x/module_usage/layout_analysis.html)（PP-DocLayoutV2/V3；正文与示例矛盾，见 §4.1）
+6. [表格结构识别模块](https://www.paddleocr.ai/latest/version3.x/module_usage/table_structure_recognition.html)
+7. [RapidOCR 模型清单 default_models.yaml](https://github.com/RapidAI/RapidOCR/blob/main/python/rapidocr/default_models.yaml)（版本与 SHA256）
+8. [RapidOCR MODEL_LICENSES.md](https://github.com/RapidAI/RapidOCR/blob/main/python/MODEL_LICENSES.md)（权重许可）
+9. [Surya 权重许可](https://github.com/datalab-to/surya)（OpenRAIL-M 条件，商用前必读；当前口径见 §2.6）
+10. [MinerU LICENSE.md](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md)（Apache-2.0 **+ 附加条款**，不是 AGPL）
+11. [GLM-OCR](https://huggingface.co/zai-org/GLM-OCR) · [PaddleOCR-VL-1.6](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6) · [granite-docling-258M](https://huggingface.co/ibm-granite/granite-docling-258M)（轻量 OCR-VLM 一档）
+12. [vLLM 在线服务文档](https://docs.vllm.ai/en/latest/serving/online_serving/) 与 [CLI 参考](https://docs.vllm.ai/en/latest/cli/serve.html)（端点、默认参数）
+13. [Ollama OpenAI 兼容文档](https://docs.ollama.com/api/openai-compatibility)（支持的端点子集）
 
 把当时的版本号、体积、许可证记回本文件的「已核对」列，再开 #97。
 
@@ -410,7 +472,9 @@ Ollama 官方模型页给了**确定的文件体积**（已核对 [ollama.com/li
 | **换模型版本**（如 PP-OCRv7） | 只改 `config.py` 的模型名，或 #99 的引擎权重清单 | **不要**（前提是同一个引擎后端） |
 | **换引擎后端**（Paddle ↔ ONNX ↔ OpenVINO） | `local_ocr.py` 里的后端选择 + `pyproject.toml` 的 optional 依赖 | 要，但只在 `local_ocr.py` |
 | **加 / 换整页方向分类** | 同上，方向分类作为本地 client 的前置步骤；若独立成模块则新加一个类 | 要；**注意 bbox 参照系必须仍是正立图**（§3.5） |
-| **加一个表格结构识别** | 新增解析步骤 + `pipeline/steps/` 挂点（§4 的触发条件到了才做） | 要，且要重跑 #62 / #23 验收 |
+| **加版面分析**（§4.1） | 新增解析步骤 + `pipeline/steps/` 挂点，输出区域框进 IR（`domain/ir.py` 可能要加字段） | 要，且要重跑 #62 / #23 验收；**改动面比前几项大，因为它改的是 IR 结构** |
+| **加一个表格结构识别**（§4.2） | 新增解析步骤 + `pipeline/steps/` 挂点，替换或旁路 `ocr_layout.py` 的伪格子 | 要，且要重跑 #62 / #23 验收 |
 | **换本地 LLM 服务端** | 只改 `.env` 的 `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | **不要**（vLLM / Ollama 等 OpenAI 兼容端点同一套协议） |
+| **上一条 VLM 主路径**（GLM-OCR / PaddleOCR-VL-1.6 一类） | 不是「加引擎」而是**改链路**：`ocr_layout.py` + 规则链要让位给端到端输出 | 要，且是重新开 Epic 的规模（与 #11 冻结的「VLM 非必须」冲突，需先改冻结结论） |
 | **新增评测引擎 / 样本** | `benchmarks/ocr/engines.py`（加引擎适配器）、`benchmarks/ocr/real.py` + `DOCPARSE_OCR_DEMO_DIR`（加真机样本） | 要（#97 的实现文件） |
 | **新增候选调研**（不写代码） | 就在本文件对应章节加一行，写清四列 + 官方链接 + 核验状态 | 不要 |
