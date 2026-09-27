@@ -1,5 +1,9 @@
 """五个云 OCR 引擎适配器：TextIn 通用 / TextIn 报关单 / 百度 / 阿里云 / 腾讯云。
 
+**本地引擎不在这里**（#108）：见 `benchmarks/ocr/local_engines.py`，两者共用本模块的
+`OcrResult` 出口。云引擎类带 `is_cloud = True`，run.py 据此在**真机样本**上默认拦住
+——半岛 / 镇发是客户真实数据，不得上传云端（#108 隐私闸）。
+
 密钥一律走环境变量，不写入仓库、不落日志：
 - TextIn：TEXTIN_APP_ID / TEXTIN_SECRET_CODE
 - 百度：BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY
@@ -58,6 +62,11 @@ class OcrResult:
     elapsed_ms: int = 0
     error: str | None = None
     raw: dict[str, Any] | None = None
+    # 方向处理留痕（#97 归因方法的 A/B/C 三组靠这两项分辨）：
+    # rotate_source = off / auto / force，rotate_deg 为施加的逆时针角度。
+    rotate_deg: int = 0
+    rotate_source: str = "off"
+    warnings: list[str] = field(default_factory=list)
 
     def text(self) -> str:
         parts = [box.text for box in self.boxes]
@@ -306,6 +315,7 @@ def parse_aliyun(payload: dict[str, Any]) -> list[OcrBox]:
 class TextinGeneralEngine:
     name = "textin-general"
     label = "TextIn 通用文字识别"
+    is_cloud = True
     url = "https://api.textin.com/ai/service/v2/recognize/multipage"
 
     def recognize(self, image: bytes) -> OcrResult:
@@ -331,6 +341,7 @@ class TextinGeneralEngine:
 class TextinCustomsEngine:
     name = "textin-customs"
     label = "TextIn 报关单专用"
+    is_cloud = True
     url = "https://api.textin.com/ai/service/v1/customs_declaration"
 
     def recognize(self, image: bytes) -> OcrResult:
@@ -362,6 +373,7 @@ class TextinCustomsEngine:
 class BaiduEngine:
     name = "baidu-general"
     label = "百度 通用文字识别标准版"
+    is_cloud = True
     token_url = "https://aip.baidubce.com/oauth/2.0/token"
     api_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general"
 
@@ -407,6 +419,7 @@ class BaiduEngine:
 class AliyunEngine:
     name = "aliyun-general"
     label = "阿里云 通用文字识别"
+    is_cloud = True
     host = "ocr-api.cn-hangzhou.aliyuncs.com"
     action = "RecognizeGeneral"
     api_version = "2021-07-07"
@@ -444,6 +457,7 @@ class AliyunEngine:
 class TencentEngine:
     name = "tencent-general"
     label = "腾讯云 通用印刷体识别"
+    is_cloud = True
     host = "ocr.tencentcloudapi.com"
     service = "ocr"
     action = "GeneralBasicOCR"
@@ -488,7 +502,9 @@ ALL_ENGINES = [
 
 
 def build_engines(names: list[str] | None = None) -> list[Any]:
+    """`names=None` 取全部云引擎；**传空列表就是不取**——别让 `[]` 又变回「全部」。"""
+
     engines = [cls() for cls in ALL_ENGINES]
-    if names:
+    if names is not None:
         engines = [engine for engine in engines if engine.name in names]
     return engines
