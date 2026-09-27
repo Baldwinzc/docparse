@@ -8,7 +8,7 @@
 - **本地优先，云端默认关，显式配置才外呼**（#94）：解析 / OCR / 模型调用默认全部在内网完成，数据不出网。云 API 代码保留，但**默认关闭**，必须在配置里显式启用才发请求。本条目是全仓约束的**唯一出处**，其它文档引用本节，不各写各的。
 - 持久化本阶段不实现，只保留 `JobStore` / `FileStore` 接口。
 - 流程图以 [docs/flow.html](docs/flow.html) 为准（已按上一条刷新）。
-- 引擎选型以 #94 系列的复核结果为准（#96 调研 → #97 离线评测，文档落地后在此挂链接）；本地化实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)。
+- 引擎选型以 #94 系列的复核结果为准：[docs/local-models-survey.md](docs/local-models-survey.md)（#96 调研，候选池与判据）→ #97 离线评测（出实测结论再定档）；本地化实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)。
 - [docs/model-survey.md](docs/model-survey.md) 与 [docs/ocr-survey.md](docs/ocr-survey.md) 保留为**历史选型对照**（成稿于「只走云 API」时期），不是主路径；下单或引用前打开文档里的官方链接再核一次价。
 - 第一期扫描件走 **OCR + 规则**，VLM 非必须；本地引擎选型同样按这个口径。
 
