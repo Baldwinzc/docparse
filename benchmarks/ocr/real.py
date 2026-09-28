@@ -18,8 +18,6 @@ from pathlib import Path
 
 import pymupdf
 
-ROOT = Path(__file__).resolve().parents[2]
-
 _TRAILING_NOTE_RE = re.compile(r",\s*[^\"'{}\[\]\d][^,]*$")
 
 
