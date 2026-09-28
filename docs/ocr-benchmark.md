@@ -25,7 +25,7 @@
 | 样本 | 页数 | 形态 | 参照 |
 |---|---|---|---|
 | 半岛 SJ25084373-310795HKD.pdf | 2 | 扫描报关单，PDF 页横版（rot=270）、图竖版 3325×4676 | 采购系统识别结果 JSON（表头 10 字段 + 19 商品行） |
-| 镇发 HKG25003373MUC 报关资料.pdf | 6 | 扫描商业单据（报关单 / 合同 / 箱单 / 发票），p1 内容旋转 90° | 无，仅可视化 + 耗时 |
+| 镇发 HKG25003373MUC 报关资料.pdf | 6 | 扫描商业单据（报关单 / 合同 / 箱单 / 发票），p1 内容旋转 90°（#109 逐页复核：p6 规范申报要素同样旋转 90°） | 无，仅可视化 + 耗时 |
 
 **引擎**（均按上一期调研 #7 候选，密钥走环境变量；执行时 CLAUDE.md 仍是「模型只走云 API」约束，本文按该口径跑，**历史对照**见文首说明）：
 
@@ -141,7 +141,7 @@ python -m benchmarks.ocr.run report
 
 | 场景 | 改哪 | 动不动 Python |
 |---|---|---|
-| 新增真机样本目录 | 环境变量 `DOCPARSE_OCR_DEMO_DIR`，`benchmarks/ocr/real.py` 加文件名 | 少量（加一个 RealSample 条目） |
+| 新增真机样本目录 | 环境变量 `DOCPARSE_OCR_DEMO_DIR`；样本本身登记在 `benchmarks/ocr/samples.py` 的 `REAL_ORIGINALS`（#109 起是唯一出处，`real.py` 不再存路径） | 否（改数据） |
 | 换 / 加云 OCR 引擎 | `benchmarks/ocr/engines.py` 加一个类（recognize → OcrResult），`ALL_ENGINES` 注册 | 是（一个类 + 一个解析函数） |
 | 夹具换版式 / 字段 | `benchmarks/ocr/fixtures.py` 的 FixtureSpec | 否（改数据即可） |
 | GT 字段与 TextIn 字段对照 | `benchmarks/ocr/gt_field_map.py` | 否 |

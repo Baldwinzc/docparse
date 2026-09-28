@@ -710,14 +710,19 @@ class TestPrivacyGate:
 
 
 class TestRotationKeyClassification:
-    def test_fixture_variants_are_rotation(self):
-        run_mod = _run_module()
-        assert run_mod._is_rotation_key("a-rot90")
-        assert run_mod._is_rotation_key("b-rot270")
-        assert not run_mod._is_rotation_key("a-base")
-        assert not run_mod._is_rotation_key("a-lowres")
+    """#109 起「哪页算旋转页」由样本清单的 `rotation_truth` 判，命名法退役。
 
-    def test_real_page_needs_explicit_key(self):
+    命名法两头都不准：镇发 p1 内容转了 90° 但名字里没有 `rotXX`（漏判），
+    `zhenfa-p1-rot90` 是**转正件**、本身正立，名字里却带 `rot90`（误判）。
+    清单驱动的判定见 tests/test_ocr_samples.py。
+    """
+
+    def test_name_hint_no_longer_decides(self):
+        run_mod = _run_module()
+        assert not run_mod._is_rotation_key("a-rot90")
+        assert not run_mod._is_rotation_key("zhenfa-p1-rot90")
+
+    def test_explicit_key_still_marks_it(self):
         run_mod = _run_module()
         assert not run_mod._is_rotation_key("zhenfa-p1")
         assert run_mod._is_rotation_key("zhenfa-p1", ("zhenfa-p1",))

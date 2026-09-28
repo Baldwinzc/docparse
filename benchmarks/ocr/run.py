@@ -2,6 +2,7 @@
 
 用法（在仓库根目录，用 .venv 解释器）：
 
+    python -m benchmarks.ocr.run samples             # 样本清单：几份 / 能否外呼 / 真实角度
     python -m benchmarks.ocr.run fixtures            # 渲染夹具 + GT 到 out/
     python -m benchmarks.ocr.run real-render         # 渲染真机样本页到 out/（本地）
     python -m benchmarks.ocr.run local-list          # 本地引擎清单 + 依赖状态
@@ -11,12 +12,18 @@
     python -m benchmarks.ocr.run call --engine local:paddle-v6-small --scope fixtures
     python -m benchmarks.ocr.run report              # 汇总指标到 out/report.md
 
+样本从 `samples.py` 的固定清单取（#109）：跑哪些页、哪页算旋转页、A 组要喂哪份转正图，
+全部读清单的 `rotation_truth`，不靠 key 里的字符串猜。`--scope` 分
+`fixtures` / `real`（原件页）/ `real-derived`（真机派生件）/ `all`，再可用 `--sample`
+按 key 通配挑。
+
 方向处理（#97 归因方法的 A/B/C 三组）：
 
     --rotate-mode off                     不判方向，喂什么读什么（配已转正的样本 = A 组）
     --rotate-mode auto                    走方向分类自己判（= B 组）
     --rotate-mode force --force-deg 90    跳过判定用指定角度（= C 组）
 
+`--force-deg` 要敲几，直接读 `samples` 清单的「真实角度」——每份样本一个数，不用猜。
 三种模式的产物落在**不同目录**（引擎名带 `@auto` / `@force90` 后缀），互不覆盖。
 
 隐私红线（#108）：真机样本（半岛 / 镇发）是客户真实数据，**云引擎默认不发请求**，
@@ -39,6 +46,7 @@ from benchmarks.ocr import fixtures as fx
 from benchmarks.ocr import local_engines as local
 from benchmarks.ocr import metrics
 from benchmarks.ocr import real as real_mod
+from benchmarks.ocr import samples as sample_mod
 from benchmarks.ocr.visualize import draw_boxes
 
 OUT_DIR = Path(__file__).resolve().parent / "out"
@@ -47,11 +55,6 @@ MAX_RETRIES = 2
 
 CLOUD_NAMES = {cls.name for cls in eng.ALL_ENGINES}
 
-# 旋转页单列（#97 / #103）：key 命中即归入旋转表，不混进平放页平均分。
-# #109 的样本清单落地后这张表由清单的 rotation_truth 驱动，这里先给个过渡口径；
-# 真机横放页（如镇发 p1）没有这种命名，用 --rotation-key 显式点名。
-ROTATION_KEY_HINTS = ("rot90", "rot180", "rot270")
-
 
 @dataclass
 class Target:
@@ -59,12 +62,17 @@ class Target:
 
     kind 决定隐私闸：`synthetic`（夹具，程序渲染）可上云；`real`（真机原件）
     默认只走本地引擎。
+
+    `rotation_truth` / `sample_kind` 来自样本清单（#109）：前者是这页的转正角
+    （= C 组 `--force-deg`），`rotation` 就是「转正角不为 0」的结论。
     """
 
     key: str
     image: bytes
     kind: str = "synthetic"
     rotation: bool = False
+    rotation_truth: int = 0
+    sample_kind: str = "flat"
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -73,9 +81,39 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _is_rotation_key(key: str, extra: tuple[str, ...] = ()) -> bool:
-    if key in extra:
-        return True
-    return any(hint in key for hint in ROTATION_KEY_HINTS)
+    """清单**之外**的临时样本才走这里：按 `--rotation-key` 手动点名。
+
+    清单里的样本一律以 `rotation_truth` 为准（#109）——命名法测不出镇发 p1 这种
+    「内容转了但名字里没有 rotXX」的页，也会把 `zhenfa-p1-rot90`（转正件，其实是正立的）
+    误判成旋转页。
+    """
+
+    return key in extra
+
+
+# ---------------------------------------------------------------------------
+# 样本清单（#109）
+
+
+def cmd_samples(args: argparse.Namespace) -> None:
+    """打印固定样本清单：几份、来源、能否外呼、类型、参照、真实角度、未覆盖类。"""
+
+    print(sample_mod.format_listing())
+    if args.json:
+        payload = {
+            "demo_dir": str(sample_mod.demo_dir()),
+            "missing_origins": list(sample_mod.missing_origin_keys()),
+            "uncovered": [
+                {"key": item.key, "label": item.label, "why": item.why, "how": item.how}
+                for item in sample_mod.UNCOVERED
+            ],
+            "rotation_cases": [asdict(case) for case in sample_mod.rotation_cases()],
+            "coverage": [asdict(row) for row in sample_mod.coverage_matrix()],
+            "samples": [asdict(spec) for spec in sample_mod.sample_specs()],
+        }
+        path = OUT_DIR / "samples.json"
+        _write_json(path, payload)
+        print(f"\n机器可读清单 → {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -100,23 +138,51 @@ def cmd_fixtures(args: argparse.Namespace) -> None:
 
 
 def cmd_real_render(args: argparse.Namespace) -> None:
-    samples = real_mod.load_real_samples()
+    """真机页出图到 out/real/。取哪几页读 `samples.py` 的清单，不再硬编码路径。"""
+
+    keys = tuple(args.sample or ())
+    samples = sample_mod.load_samples("real", keys)
     if not samples:
-        print(f"未找到真机样本，检查 DOCPARSE_OCR_DEMO_DIR：{real_mod.demo_dir()}")
+        print(f"未找到真机样本，检查 DOCPARSE_OCR_DEMO_DIR：{sample_mod.demo_dir()}")
+        print("清单：python -m benchmarks.ocr.run samples")
         return
     for sample in samples:
-        for page in sample.pages:
-            out_path = OUT_DIR / "real" / f"{page.key}.jpg"
+        spec = sample.spec
+        out_path = OUT_DIR / "real" / f"{spec.key}.jpg"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(sample.image)
+        print(f"{spec.key} 第{spec.page}页 真实角度{spec.rotation_truth} → {out_path}")
+
+    if args.derived:
+        for sample in sample_mod.load_samples("real-derived", keys):
+            spec = sample.spec
+            out_path = OUT_DIR / "real-derived" / f"{spec.key}.jpg"
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(page.image)
-            print(f"{page.key} {page.pdf_name} 第{page.page_number}页 → {out_path}")
-        if sample.reference:
-            fields = real_mod.peninsula_reference_fields(sample.reference)
-            goods = real_mod.peninsula_goods_summary(sample.reference)
-            _write_json(OUT_DIR / "real" / "peninsula-reference.json", {
-                "fields": fields,
-                "goods": goods,
-            })
+            out_path.write_bytes(sample.image)
+            print(f"{spec.key} 第{spec.page}页 真实角度{spec.rotation_truth} → {out_path}")
+
+    _write_reference_json()
+
+
+def _write_reference_json() -> None:
+    """把清单登记的参照写一份到 out/real/（只有登记了 reference_json 的原件有）。"""
+
+    for origin in sample_mod.origins():
+        if not origin.reference_json:
+            continue
+        ref_path = sample_mod.demo_dir() / origin.reference_json
+        if not ref_path.exists():
+            print(f"清单登记了参照但文件不在盘上：{ref_path}")
+            continue
+        reference = real_mod.load_reference_json(ref_path)
+        if origin.reference == "peninsula-head-goods":
+            payload = {
+                "fields": real_mod.peninsula_reference_fields(reference),
+                "goods": real_mod.peninsula_goods_summary(reference),
+            }
+        else:
+            payload = reference
+        _write_json(OUT_DIR / "real" / f"{origin.key}-reference.json", payload)
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +286,8 @@ def _run_engine_on(engine, targets: list[Target], *, allow_cloud_on_real: bool) 
             "key": target.key,
             "kind": target.kind,
             "rotation": target.rotation,
+            "rotation_truth": target.rotation_truth,
+            "sample_kind": target.sample_kind,
             "elapsed_ms": result.elapsed_ms,
             "error": result.error,
             "rotate_deg": result.rotate_deg,
@@ -255,30 +323,27 @@ def _run_engine_on(engine, targets: list[Target], *, allow_cloud_on_real: bool) 
 
 
 def _targets(args: argparse.Namespace) -> list[Target]:
-    rotation_keys = tuple(args.rotation_key or ())
+    """待识别目标全部来自样本清单（#109）。
+
+    「哪页算旋转页」读清单的 `rotation_truth`——真机横放页（镇发 p1 / p6）名字里没有
+    `rotXX`，按命名猜会漏；而 `zhenfa-p1-rot90` 这种**转正件**名字里有 `rot90`，
+    按命名猜又会误判成旋转页。`--rotation-key` 只作手动兜底。
+    """
+
+    extra_rotation_keys = tuple(args.rotation_key or ())
     targets: list[Target] = []
-    if args.scope in {"fixtures", "all"}:
-        images, _ = fx.build_all()
-        targets.extend(
+    for sample in sample_mod.load_samples(args.scope, tuple(args.sample or ())):
+        spec = sample.spec
+        targets.append(
             Target(
-                key=f"{img.key}-{img.variant}",
-                image=img.image,
-                kind="synthetic",
-                rotation=_is_rotation_key(img.variant),
+                key=spec.key,
+                image=sample.image,
+                kind=spec.target_kind,
+                rotation=spec.is_rotation or _is_rotation_key(spec.key, extra_rotation_keys),
+                rotation_truth=spec.rotation_truth,
+                sample_kind=spec.kind,
             )
-            for img in images
         )
-    if args.scope in {"real", "all"}:
-        for sample in real_mod.load_real_samples():
-            targets.extend(
-                Target(
-                    key=page.key,
-                    image=page.image,
-                    kind="real",
-                    rotation=_is_rotation_key(page.key, rotation_keys),
-                )
-                for page in sample.pages
-            )
     return targets
 
 
@@ -346,12 +411,19 @@ def cmd_call(args: argparse.Namespace) -> None:
         print("没有匹配的引擎")
         sys.exit(2)
     targets = _targets(args)
+    if not targets:
+        print(f"没有匹配的样本（--scope {args.scope}，--sample {args.sample or '不限'}）")
+        print("清单：python -m benchmarks.ocr.run samples")
+        sys.exit(2)
     if args.allow_cloud_on_real:
         print(
             "!! --allow-cloud-on-real 已开启：真机样本会发给云引擎。"
             "半岛 / 镇发原件出门即视为已授权，报告里会留痕。"
         )
+    rotations = [target.key for target in targets if target.rotation]
     print(f"目标 {len(targets)} 张图，引擎 {[e.name for e in engine_list]}")
+    if rotations:
+        print(f"其中旋转页 {len(rotations)} 张（按清单 rotation_truth 判）：{'、'.join(rotations)}")
     failures = 0
     for engine in engine_list:
         probe = getattr(engine, "available", None)
@@ -406,18 +478,20 @@ def _textin_fields_for_gt(data: dict) -> dict[str, str]:
 
 def _fixture_rows() -> list[dict]:
     gts = _load_gt()
+    specs = sample_mod.spec_by_key()
     rows: list[dict] = []
     for data in _read_results():
         engine = data.get("engine", "")
         key = data.get("key", "")
-        if not key.startswith(("a-", "b-")):
+        spec = specs.get(key)
+        if spec is None or spec.source != "fixture":
             continue
-        fixture_key, _variant = key.split("-", 1)
-        gt = gts.get(fixture_key)
+        gt = gts.get(spec.origin)
         base = {
             "engine": engine,
             "key": key,
             "rotation": bool(data.get("rotation")),
+            "rotation_truth": data.get("rotation_truth", spec.rotation_truth),
             "elapsed_ms": data.get("elapsed_ms", 0),
             "vram_peak_mb": data.get("vram_peak_mb"),
             "error": data.get("error"),
@@ -447,14 +521,18 @@ def _real_rows() -> list[dict]:
     reference = None
     if ref_path.exists():
         reference = json.loads(ref_path.read_text(encoding="utf-8"))
+    specs = sample_mod.spec_by_key()
     for data in _read_results():
         key = data.get("key", "")
-        if not key.startswith("peninsula-"):
+        spec = specs.get(key)
+        # 「对采购系统识别结果的表」只收登记了半岛参照的页
+        if spec is None or spec.reference != "peninsula-head-goods":
             continue
         base = {
             "engine": data.get("engine", ""),
             "key": key,
             "rotation": bool(data.get("rotation")),
+            "rotation_truth": data.get("rotation_truth", spec.rotation_truth),
             "elapsed_ms": data.get("elapsed_ms", 0),
             "vram_peak_mb": data.get("vram_peak_mb"),
             "cloud_override": bool(data.get("cloud_override")),
@@ -487,8 +565,10 @@ def _goods_rows(region: tuple[float, float, float, float] | None) -> list[dict]:
     if not goods:
         return []
     rows: list[dict] = []
+    specs = sample_mod.spec_by_key()
     for data in _read_results():
-        if not data.get("key", "").startswith("peninsula-") or data.get("error"):
+        spec = specs.get(data.get("key", ""))
+        if spec is None or spec.reference != "peninsula-head-goods" or data.get("error"):
             continue
         stats = metrics.goods_row_structure(
             goods,
@@ -566,17 +646,25 @@ def cmd_report(args: argparse.Namespace) -> None:
         if region
         else "商品行结构评估区域：**未指定**（`--goods-region`），行带数按整页算，只能当参考值"
     )
+    summary = sample_mod.coverage_summary()
+    lines.append(
+        f"样本：清单 {summary['samples']} 份"
+        f"（真机 {summary['real']} / 夹具 {summary['fixture']}），"
+        f"旋转原件页 {summary['rotation_pages']} 张，未覆盖类 {summary['uncovered']} 条"
+        "（列清单：`python -m benchmarks.ocr.run samples`）"
+    )
 
     flat = [row for row in fixture_rows if not row.get("rotation")]
     rotated = [row for row in fixture_rows if row.get("rotation")]
 
     lines.append("")
     lines.append("## 夹具逐图")
-    lines.append("| 引擎 | 图 | CER | 字段命中 | 耗时ms | 显存MB | 错误 |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| 引擎 | 图 | 真实角度 | CER | 字段命中 | 耗时ms | 显存MB | 错误 |")
+    lines.append("|---|---|---|---|---|---|---|---|")
     for row in fixture_rows:
         lines.append(
-            f"| {row['engine']} | {row['key']} | {_fmt(row['cer'])} | {_fmt(row['field_hit'])} "
+            f"| {row['engine']} | {row['key']} | {row.get('rotation_truth', 0)} "
+            f"| {_fmt(row['cer'])} | {_fmt(row['field_hit'])} "
             f"| {row['elapsed_ms']} | {_fmt(row.get('vram_peak_mb'), 1)} "
             f"| {row.get('error') or ''} |"
         )
@@ -587,21 +675,24 @@ def cmd_report(args: argparse.Namespace) -> None:
     lines.append("")
     lines.append("## 半岛真机（对采购系统识别结果）")
     if real_rows:
-        lines.append("| 引擎 | 页 | 字段命中 | 耗时ms | 显存MB | 未命中 |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("| 引擎 | 页 | 真实角度 | 字段命中 | 耗时ms | 显存MB | 未命中 |")
+        lines.append("|---|---|---|---|---|---|---|")
         for row in real_rows:
+            truth = row.get("rotation_truth", 0)
             if row.get("error"):
                 lines.append(
-                    f"| {row['engine']} | {row.get('key')} | - | - | - | {row['error']} |"
+                    f"| {row['engine']} | {row.get('key')} | {truth} "
+                    f"| - | - | - | {row['error']} |"
                 )
             else:
                 misses = "、".join(row.get("misses", []))
                 lines.append(
-                    f"| {row['engine']} | {row.get('key')} | {_fmt(row.get('field_hit'))} "
+                    f"| {row['engine']} | {row.get('key')} | {truth} "
+                    f"| {_fmt(row.get('field_hit'))} "
                     f"| {row.get('elapsed_ms')} | {_fmt(row.get('vram_peak_mb'), 1)} | {misses} |"
                 )
     else:
-        lines.append("_（无数据；out/results 下没有 peninsula-* 结果）_")
+        lines.append("_（无数据；out/results 下没有半岛参照页的结果）_")
 
     lines.append("")
     lines.append("## 半岛商品行结构（行数对不对、每行归属哪一件）")
@@ -676,7 +767,16 @@ def _add_engine_options(parser: argparse.ArgumentParser) -> None:
         "--rotation-key",
         action="append",
         default=[],
-        help="把某个 key 显式标为旋转页（真机横放页没有 rotXX 命名时用）",
+        help="强行把某个 key 标为旋转页（清单的 rotation_truth 已自动判；这里只是手动兜底）",
+    )
+    parser.add_argument(
+        "--sample",
+        action="append",
+        default=[],
+        help=(
+            "只跑匹配的样本，fnmatch 通配、可重复：--sample 'zhenfa-p*'、--sample zhenfa-p1-rot90"
+            "（不带通配符就是精确匹配，`zhenfa-p1` 不会把派生件一起带上）"
+        ),
     )
 
 
@@ -684,9 +784,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="benchmarks.ocr.run")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    samples_parser = sub.add_parser("samples", help="列样本清单与覆盖矩阵（#109）")
+    samples_parser.add_argument(
+        "--json", action="store_true", help="同时把机器可读清单写到 out/samples.json"
+    )
+    samples_parser.set_defaults(func=cmd_samples)
+
     sub.add_parser("fixtures").set_defaults(func=cmd_fixtures)
 
-    sub.add_parser("real-render").set_defaults(func=cmd_real_render)
+    real_render = sub.add_parser("real-render", help="真机页出图到 out/real/（本地）")
+    real_render.add_argument("--derived", action="store_true", help="连真机派生件一起出图")
+    real_render.add_argument("--sample", action="append", default=[], help="按 key 通配挑样本")
+    real_render.set_defaults(func=cmd_real_render)
 
     local_list = sub.add_parser("local-list", help="列本地引擎清单与依赖状态")
     local_list.add_argument("--probe", action="store_true", help="真构造并跑一张白底图，验 API")
@@ -696,7 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     call = sub.add_parser("call")
     _add_engine_options(call)
-    call.add_argument("--scope", default="all", choices=["fixtures", "real", "all"])
+    call.add_argument("--scope", default="all", choices=list(sample_mod.SCOPES))
     call.set_defaults(func=cmd_call)
 
     report = sub.add_parser("report")

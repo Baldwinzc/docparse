@@ -1,6 +1,10 @@
 """自造报关单扫描夹具：程序渲染仿真出口报关单页，GT 精确已知，再派生扫描变体。
 
 对应 Issue：#60。渲染结果只落 out/（不入库），GT 随代码可复现。
+
+#109 起，变体清单由本模块对外暴露（`FIXTURE_VARIANTS` / `VARIANTS`），供样本清单
+（`samples.py`）统一登记：清单那边 `DERIVATIONS` 记的 kind / applied_deg 必须和这里一致，
+`tests/test_ocr_samples.py` 同时比对两张表**与真实行为**（`apply_variant` 出来的像素）。
 """
 
 from __future__ import annotations
@@ -22,7 +26,35 @@ _FONT_CANDIDATES: list[tuple[str, int]] = [
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
 ]
 
-VARIANTS = ["base", "rot90", "rot180", "rot270", "jpeg60", "noise", "lowres"]
+
+@dataclass(frozen=True)
+class FixtureVariant:
+    """一种夹具变体：`applied_deg` 是**施加**的逆时针角度（`PIL.Image.rotate` 口径）。
+
+    与清单里的 `rotation_truth` 互为补角——`rot90` 施加 90°，转正却要 270°。
+    """
+
+    name: str
+    kind: str
+    applied_deg: int
+
+
+FIXTURE_VARIANTS: tuple[FixtureVariant, ...] = (
+    FixtureVariant("base", "flat", 0),
+    FixtureVariant("rot90", "rot90", 90),
+    FixtureVariant("rot180", "rot180", 180),
+    FixtureVariant("rot270", "rot270", 270),
+    FixtureVariant("jpeg60", "jpeg", 0),
+    FixtureVariant("noise", "noise", 0),
+    FixtureVariant("lowres", "lowres", 0),
+)
+
+VARIANTS: list[str] = [variant.name for variant in FIXTURE_VARIANTS]
+
+# 旋转类变体名 → 施加角；单测按这张表比对 `apply_variant` 的真实像素
+ROTATION_VARIANTS: dict[str, int] = {
+    variant.name: variant.applied_deg for variant in FIXTURE_VARIANTS if variant.applied_deg
+}
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -283,12 +315,9 @@ def render_spec(spec: FixtureSpec) -> tuple[Image.Image, FixtureGt]:
 def apply_variant(base: Image.Image, variant: str) -> Image.Image:
     if variant in {"base", "jpeg60"}:
         return base
-    if variant == "rot90":
-        return base.rotate(90, expand=True, fillcolor="white")
-    if variant == "rot180":
-        return base.rotate(180, expand=True, fillcolor="white")
-    if variant == "rot270":
-        return base.rotate(270, expand=True, fillcolor="white")
+    if variant in ROTATION_VARIANTS:
+        # 角度取自 FIXTURE_VARIANTS，不在这里再写一遍数字
+        return base.rotate(ROTATION_VARIANTS[variant], expand=True, fillcolor="white")
     if variant == "noise":
         noisy = base.filter(ImageFilter.GaussianBlur(0.6))
         noise = Image.effect_noise(base.size, 14).convert("RGB")
