@@ -1,20 +1,22 @@
-"""真机样本渲染：半岛 / 镇发 PDF 逐页出图。客户原件不入仓库，路径走环境变量。
+"""真机样本渲染：把清单登记的真机 PDF 逐页出图，外加参照 JSON 的读取。
 
-- 半岛（SJ…）：2 页扫描报关单，页横图竖（rotation=270），带采购系统识别结果 JSON 作参照。
-- 镇发（HKG…）：6 页扫描商业单据，无参照 JSON，仅做可视化与耗时。
+**哪几份、哪几页、旋转角多少，全部读 `samples.py` 的清单**——本模块不再硬编码路径，
+也不判断旋转（那是清单的 `rotation_truth`）。客户原件不入仓库，目录走
+`DOCPARSE_OCR_DEMO_DIR`（见 `samples.demo_dir`）。
+
+- 半岛（SJ…）：2 页扫描报关单，PDF `/Rotate=270` 元数据在渲染时已被应用，
+  所以出图是正立的（**不是内容旋转**，与镇发区分，见 #103）；带采购系统识别结果 JSON 作参照。
+- 镇发（HKG…）：6 页扫描商业单据，p1 / p6 内容旋转 90°，其余平放；无参照 JSON。
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
-
-ROOT = Path(__file__).resolve().parents[2]
 
 _TRAILING_NOTE_RE = re.compile(r",\s*[^\"'{}\[\]\d][^,]*$")
 
@@ -29,9 +31,6 @@ def load_reference_json(path: Path) -> dict:
         cleaned = "\n".join(_TRAILING_NOTE_RE.sub(",", line) for line in text.splitlines())
         return json.loads(cleaned)
 
-PENINSULA_PDF = "SJ25084373-310795HKD.pdf"
-PENINSULA_REF = "SJ25084373-310795HKD-识别结果.json"
-ZHENFA_PDF = "HKG25003373MUC/镇发出口报关资料（11件）.pdf"
 
 PENINSULA_KEY_FIELDS: dict[str, str] = {
     "contrNo": "合同协议号",
@@ -67,20 +66,9 @@ class RealPage:
     image: bytes
 
 
-@dataclass
-class RealSample:
-    name: str
-    pages: list[RealPage]
-    reference: dict | None = None
-    key_fields: dict[str, str] | None = None
+def render_pdf_pages(pdf_path: Path, prefix: str, zoom: float = 2.0) -> list[RealPage]:
+    """逐页渲染成 JPEG。key 用 `samples.py` 的页 key（`{prefix}-p{n}`），两边必须对上。"""
 
-
-def demo_dir() -> Path:
-    env = os.environ.get("DOCPARSE_OCR_DEMO_DIR")
-    return Path(env) if env else ROOT.parent / "AI识别Demo"
-
-
-def _render_pdf(pdf_path: Path, sample: str, zoom: float = 2.0) -> list[RealPage]:
     doc = pymupdf.open(pdf_path)
     pages: list[RealPage] = []
     matrix = pymupdf.Matrix(zoom, zoom)
@@ -89,7 +77,7 @@ def _render_pdf(pdf_path: Path, sample: str, zoom: float = 2.0) -> list[RealPage
         data = pixmap.tobytes("jpeg", jpg_quality=90)
         pages.append(
             RealPage(
-                key=f"{sample}-p{index}",
+                key=f"{prefix}-p{index}",
                 pdf_name=pdf_path.name,
                 page_number=index,
                 image=data,
@@ -97,32 +85,6 @@ def _render_pdf(pdf_path: Path, sample: str, zoom: float = 2.0) -> list[RealPage
         )
     doc.close()
     return pages
-
-
-def load_real_samples() -> list[RealSample]:
-    base = demo_dir()
-    samples: list[RealSample] = []
-
-    peninsula_pdf = base / PENINSULA_PDF
-    if peninsula_pdf.exists():
-        reference = None
-        ref_path = base / PENINSULA_REF
-        if ref_path.exists():
-            reference = load_reference_json(ref_path)
-        samples.append(
-            RealSample(
-                name="peninsula",
-                pages=_render_pdf(peninsula_pdf, "peninsula"),
-                reference=reference,
-                key_fields=PENINSULA_KEY_FIELDS,
-            )
-        )
-
-    zhenfa_pdf = base / ZHENFA_PDF
-    if zhenfa_pdf.exists():
-        samples.append(RealSample(name="zhenfa", pages=_render_pdf(zhenfa_pdf, "zhenfa")))
-
-    return samples
 
 
 def peninsula_reference_fields(reference: dict) -> dict[str, str]:
