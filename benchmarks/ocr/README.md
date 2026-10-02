@@ -241,6 +241,42 @@ PP-OCRv6 官方**没有**显存表（#96 已核实），只能自测。`VramSamp
 
 引擎间串行 + 每次调用间隔 1.2s，避免触发 QPS 限制。本地引擎同样串行，间隔对本地跑是额外开销，但它换来的是「同一批样本同一条流水线」，先保持一致。
 
+**容量压测（`capacity.py`）不吃这个 1.2s 间隔**——它测的是吞吐，串行间隔会把数压塌；见下节。
+
+## 容量与规格实测（#98）
+
+`capacity.py` 回答的是另一问：**#97 答「哪个准」，它答「买什么机器」**。同一批样本、同一引擎（默认第一期选型 `local:paddle-v6-small` + `doc-ori`），在 CPU 与 GPU 上各跑一遍并发档位，出**页/秒、票/秒、显存峰值、单页与单票 P50/P95**。
+
+```bash
+# GPU 一条曲线（并发 1/2/4/8 一次跑完）
+export CUDA_VISIBLE_DEVICES=2                 # 固定单卡，整卡显存读数才干净
+export DOCPARSE_OCR_DEMO_DIR=/path/to/AI识别Demo
+python -m benchmarks.ocr.capacity run --device gpu \
+    --engine local:paddle-v6-small --rotate-mode auto \
+    --scope real --repeat 4 --concurrency 1,2,4,8 \
+    --run-dir out/capacity/gpu
+
+# CPU 一条曲线（同一台机、同一引擎，只换 --device cpu：干净隔离 CPU/GPU 一个变量）
+python -m benchmarks.ocr.capacity run --device cpu \
+    --engine local:paddle-v6-small --rotate-mode auto \
+    --scope real --repeat 4 --concurrency 1,2,4,8 \
+    --run-dir out/capacity/cpu
+
+python -m benchmarks.ocr.capacity report --run-dir out/capacity/gpu   # 汇表 → out/capacity/gpu/report.md
+```
+
+### 并发怎么建模（读结论前必须知道）
+
+**一个并发档 = N 个进程，每进程一个引擎实例、自己那一份票**：
+
+- **进程级并发，不是线程**：PaddleOCR 的 predictor 不是线程安全的，进程模型也是上线时的部署模型（一张卡上 N 个 worker），读出来的显存才是可用水位。
+- **按票分，不按页分**：一票（一份原件 PDF）整份交给一个 worker，票级时延才有定义；分片用轮转 `ticket_index % N == worker_id`。
+- **预热与模型加载不计入**：worker 建好引擎、跑 `--warmup` 页后落 `ready`，父进程等齐所有 `ready` 再落 `go`，worker 见 `go` 才开始计时。吞吐按 makespan 算（父进程记 `go` 的墙钟，取各 worker 结束时间的最大值）。
+- **父进程不建引擎**：它只备图 / 起进程 / 采样，避免自己的 CUDA 上下文污染整卡读数。
+- **整卡 vs 进程两个显存口径都报**：整卡（`nvidia-smi` 轮询，含同卡其它进程）看 24 GB 水位，同时记基线给增量；进程（`paddle...max_memory_allocated()`）是模型净占用，N 个相加是下限。
+
+结果落 `out/capacity/<run-dir>/c<N>/level.json`，汇总表落 `report.md`。**产物不入库**（同 `out/`）。方法、采购换算与局限写在 [docs/capacity-benchmark.md](../../docs/capacity-benchmark.md)（#98）。
+
 ## 以后新引擎 / 新样本 / 新指标改哪
 
 | 场景 | 改哪 | 动不动 Python |
@@ -258,6 +294,10 @@ PP-OCRv6 官方**没有**显存表（#96 已核实），只能自测。`VramSamp
 | **补一个「未覆盖类」**（#106 口径） | `samples.py` 的 `UNCOVERED` 加一条（说明为什么单列 + 怎么补） | 否 |
 | 换显存采样方式 | `local_engines.py` 的 `VramSampler` 一处 | 是 |
 | Paddle 又改了「重置峰值」的 API 名 | `local_engines.py` 的 `reset_paddle_peak` 的别名列表加一个 | 否（改数据） |
+| **改容量压测的并发模型**（线程 / pipeline / 多卡分片） | `capacity.py` 的 `run_level` + `shard_tickets` | 是（一处编排） |
+| **改「一票」怎么定义**（如按件数 / 按目录） | `capacity.py` 的 `group_tickets`（现在按原件 `origin` 分票） | 是（一处） |
+| **加一档采购换算**（新的日票量 / 页数假设） | `docs/capacity-benchmark.md` 的换算表 | 否（改数） |
+| 换整卡显存采样口径 | `capacity.py` 的 `_CardSampler`（复用 `local.read_nvidia_smi_used_mb`） | 是（一处） |
 | 换 / 加云引擎 | `engines.py` 加一个类（沿用 #60 做法），`ALL_ENGINES` 注册 | 是（一个类 + 一个解析函数） |
 | 夹具换版式 / 字段 | `fixtures.py` 的 `FixtureSpec` | 否（改数据即可） |
 | GT 字段与 TextIn 字段对照 | `gt_field_map.py` | 否 |

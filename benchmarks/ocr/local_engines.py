@@ -423,14 +423,43 @@ def _paddle_predict(engine: Any, path: str) -> Any:
         return engine.predict(path)
 
 
+def paddle_cpu_kwargs(device: str, cpu_threads: int | None = None) -> dict[str, Any]:
+    """CPU 上跑 PaddleOCR 系模型要加的公共参数（#98 实测，不是猜）。
+
+    Paddle 3.3.1 上 **CPU + MKL-DNN + 新 IR** 在静态图预测器里必抛
+    `NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support
+    [pir::ArrayAttribute<pir::DoubleAttribute>]`（`onednn_instruction.cc`）。试过按不住的
+    三条路：`engine_config={"paddle_static": {"enable_new_ir": False}}`（被 PaddleX 的
+    `resolve_paddle_static_engine_config` 滤掉）、`FLAGS_enable_pir_api=0` /
+    `FLAGS_use_mkldnn=0`（PaddleX 自己显式 `enable_new_ir(True)`，env 覆盖不了）。
+    **实测只有 `enable_mkldnn=False` 能跑通**——留在 `paddle_static` 同一条预测器路径上，
+    只是关掉 MKL-DNN，是相对 GPU 配置**改动最小**的解法。
+
+    代价：CPU 数字因此是**不开 MKL-DNN 的下限**，不是这台 CPU 的最优表现。见
+    [docs/capacity-benchmark.md](../../docs/capacity-benchmark.md) §局限。
+
+    `cpu_threads` 一并在此下传（PaddleOCR 的公共参数，默认 10）；不给就用它的默认值。
+    """
+
+    if device != "cpu":
+        return {}
+    kwargs: dict[str, Any] = {"enable_mkldnn": False}
+    if cpu_threads:
+        kwargs["cpu_threads"] = cpu_threads
+    return kwargs
+
+
 class PaddleOcrEngine(LocalEngine):
     """PaddleOCR 3.x，PP-OCRv6 / PP-OCRv5 各档。"""
 
     requires = ("paddleocr",)
 
-    def __init__(self, tier: PaddleTier, device: str = "gpu") -> None:
+    def __init__(
+        self, tier: PaddleTier, device: str = "gpu", cpu_threads: int | None = None
+    ) -> None:
         self.tier = tier
         self.device = device
+        self.cpu_threads = cpu_threads
         self.name = f"local:paddle-{tier.key}"
         self.label = f"PaddleOCR {tier.label}"
         self._engine: Any = None
@@ -448,6 +477,7 @@ class PaddleOcrEngine(LocalEngine):
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
                 device=self.device,
+                **paddle_cpu_kwargs(self.device, self.cpu_threads),
             )
         return self._engine
 
@@ -501,9 +531,12 @@ class DocOriEngine(LocalEngine):
     label = "PP-LCNet_x1_0_doc_ori 整页方向分类"
     model_name = "PP-LCNet_x1_0_doc_ori"
 
-    def __init__(self, device: str = "gpu", invert: bool = False) -> None:
+    def __init__(
+        self, device: str = "gpu", invert: bool = False, cpu_threads: int | None = None
+    ) -> None:
         self.device = device
         self.invert = invert
+        self.cpu_threads = cpu_threads
         self._engine: Any = None
 
     def _build(self) -> Any:
@@ -511,7 +544,9 @@ class DocOriEngine(LocalEngine):
             from paddleocr import DocImgOrientationClassification  # noqa: PLC0415
 
             self._engine = DocImgOrientationClassification(
-                model_name=self.model_name, device=self.device
+                model_name=self.model_name,
+                device=self.device,
+                **paddle_cpu_kwargs(self.device, self.cpu_threads),
             )
         return self._engine
 
@@ -769,6 +804,7 @@ def read_nvidia_smi_used_mb() -> float | None:
 class LocalBuildOptions:
     device: str = "gpu"
     ori_invert: bool = False
+    cpu_threads: int | None = None
 
 
 @dataclass
@@ -786,7 +822,9 @@ def local_registry() -> list[LocalRegistryEntry]:
             key=f"local:paddle-{tier.key}",
             label=f"PaddleOCR {tier.label}",
             requires=PaddleOcrEngine.requires,
-            factory=lambda opts, tier=tier: PaddleOcrEngine(tier, device=opts.device),
+            factory=lambda opts, tier=tier: PaddleOcrEngine(
+                tier, device=opts.device, cpu_threads=opts.cpu_threads
+            ),
         )
         for tier in PADDLE_TIERS
     ]
@@ -804,7 +842,9 @@ def local_registry() -> list[LocalRegistryEntry]:
             key=DocOriEngine.name,
             label=DocOriEngine.label,
             requires=DocOriEngine.requires,
-            factory=lambda opts: DocOriEngine(device=opts.device, invert=opts.ori_invert),
+            factory=lambda opts: DocOriEngine(
+                device=opts.device, invert=opts.ori_invert, cpu_threads=opts.cpu_threads
+            ),
             kind="orientation",
         )
     )
