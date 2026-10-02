@@ -4,7 +4,7 @@
 
 云部分成稿时 CLAUDE.md 还是「只走云 API」约束，脚本按那个口径写；本地化（#94）之后本目录扩成**「本地可选 + 云端对照」**：同一批样本、同一套指标，本地引擎与 #60 的云基线**同表并列**（#97 要的正是这个）。
 
-约束口径见 [CLAUDE.md](../../CLAUDE.md)。本地引擎的选型结论在 [#110](https://github.com/Baldwinzc/docparse/issues/110) 产出，本 README 只管**装置怎么用**。
+约束口径见 [CLAUDE.md](../../CLAUDE.md)。本地引擎的选型结论在 [docs/local-ocr-benchmark.md](../../docs/local-ocr-benchmark.md)（#110），本 README 只管**装置怎么用**。
 
 > ⚠️ **隐私红线**：`AI识别Demo` / `补充测试` 下是客户真实数据，**不得上传任何云端**。装置里做成了默认硬闸（见「隐私闸」一节），不是靠人自觉。
 
@@ -36,6 +36,15 @@ pip install -e ".[local-ocr]"   # 跑本地引擎（paddleocr / rapidocr，重�
 ```bash
 python -m pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 pip install -e ".[local-ocr]"
+```
+
+`local-ocr` extra 里带 `onnxruntime`——**RapidOCR 自己不声明推理后端**（#110 实测：只装 `rapidocr` 会 `ModuleNotFoundError: No module named 'onnxruntime'`）。要 ONNX 也吃 GPU，把 extra 里的 `onnxruntime` 换成 `onnxruntime-gpu`。
+
+**中文字体**：`fixtures.py` 要一个含中文的字体渲染仿真件；本机找不到时会抛错，指过去即可：
+
+```bash
+export OCR_BENCH_FONT=/path/to/CJK.ttf     # 或 .ttc（默认探测 macOS 的 Songti / STHeiti）
+python -m benchmarks.ocr.run fixtures      # 能出 14 张图才说明字体对了
 ```
 
 装完先验一遍（本机的模型名 / 返回结构未必和官方文档一字不差，probe 就是用来早点撞上这件事的）：
@@ -121,10 +130,10 @@ python -m benchmarks.ocr.run samples --json   # 再落一份 out/samples.json，
 |---|---|
 | `local:paddle-v6-tiny` / `-small` / `-medium` | PaddleOCR PP-OCRv6 三档（small 是官方默认档） |
 | `local:paddle-v5-mobile` / `-server` | PaddleOCR PP-OCRv5 旧基线两档 |
-| `local:rapidocr-v6-tiny` / `-small` / `-medium` | 同一批 Paddle 权重转 ONNX，**不装 PaddlePaddle**；装不上 Paddle 系时的等价退路 |
-| `local:doc-ori` | PP-LCNet_x1_0_doc_ori 整页方向分类（0/90/180/270）。**不是 OCR 引擎**，只出判定角度，用 `--rotate-mode auto` 挂它 |
+| `local:rapidocr-v6-tiny` / `-small` / `-medium` | 同一批 Paddle 权重转 ONNX，**不装 PaddlePaddle**；装不上 Paddle 系时的等价退路。本装置里走 **onnxruntime CPU**（`onnxruntime` 是 CPU 版），时延不与 GPU 上的 Paddle 直接比；显存不占卡 |
+| `local:doc-ori` | PP-LCNet_x1_0_doc_ori 整页方向分类（0/90/180/270）。**不是 OCR 引擎**，只出判定角度，用 `--rotate-mode auto` 挂它。实测 54/54 判对（[docs/local-ocr-benchmark.md](../../docs/local-ocr-benchmark.md) §6.1） |
 
-引擎名与档位取自 [docs/local-models-survey.md](../../docs/local-models-survey.md) 已核对的官方口径。
+引擎名与档位取自 [docs/local-models-survey.md](../../docs/local-models-survey.md) 已核对的官方口径。**实测结论（第一期选型）见 [docs/local-ocr-benchmark.md](../../docs/local-ocr-benchmark.md)（#110）。**
 
 ## 方向处理与 A/B/C 三组（#97 归因方法）
 
@@ -179,6 +188,13 @@ PP-OCRv6 官方**没有**显存表（#96 已核实），只能自测。`VramSamp
 2. 退到 `nvidia-smi --query-gpu=memory.used` 轮询（0.2s 一次）——**整卡口径，含同卡其他进程**，结果里会写明；
 3. 两个都没有（本机 Mac、无卡机器）→ 记 `-`，note 写「读不到」。
 
+两条实测口径（#110 撞上并已修）：
+
+- **重置峰值这项小版本之间改过名**。Paddle 3.3.1 上是 `reset_max_memory_allocated`，早期是 `reset_peak_memory_allocated` / `reset_peak_memory_stats`。`VramSampler` 逐个试，都失败才退回 nvidia-smi——**不假设某个名字一定在**。
+- **nvidia-smi 退路认卡**。`CUDA_VISIBLE_DEVICES` 只有一个卡号时，只读那张卡（`nvidia-smi -i <id>`），不再取全机最大值——否则在多卡机上会把**别人进程**的占用算进来（#110 实测撞上：2 号卡跑评测，退路却报了 1 号卡的 43 GB）。多卡或没设时仍按整机最大值，note 里会写明。
+
+**每引擎一个进程**跑出来的数才是干净的：同一进程里先跑的引擎模型不会释放，会让后面引擎的峰值读数虚高。`run_matrix.sh`（#110）就是这么分的。
+
 **读不到就写读不到，不拿社区数字顶替。**
 
 ### 旋转页单列
@@ -231,6 +247,7 @@ PP-OCRv6 官方**没有**显存表（#96 已核实），只能自测。`VramSamp
 |---|---|---|
 | 加一个 PaddleOCR 档位（如 v7 tiny） | `local_engines.py` 的 `PADDLE_TIERS` 加一行 | 否（改数据） |
 | 加一个 RapidOCR 档位 | `local_engines.py` 的 `RAPID_TIERS` 加一行 | 否（改数据） |
+| RapidOCR 又改了「枚举参数」的键名 | `local_engines.py` 的 `_RAPID_ENUM_PARAMS` 加一行 | 否（改数据） |
 | 加一个非 Paddle 系本地引擎（docTR 等） | `local_engines.py` 加一个类 + 一个解析函数 | 是（一个类） |
 | 换本地引擎的返回结构适配 | `local_engines.py` 的 `parse_*_result` 一处 | 是 |
 | 加一个新指标 | `metrics.py` 加纯函数 + `run.py` 的报告加一列 | 是 |
@@ -240,6 +257,7 @@ PP-OCRv6 官方**没有**显存表（#96 已核实），只能自测。`VramSamp
 | **标一个新的旋转真机页** | `samples.py` 里该 `PageOrigin` 的 `truth` 填转正角；派生件与 A/B/C 命令自动跟着变 | **否** |
 | **补一个「未覆盖类」**（#106 口径） | `samples.py` 的 `UNCOVERED` 加一条（说明为什么单列 + 怎么补） | 否 |
 | 换显存采样方式 | `local_engines.py` 的 `VramSampler` 一处 | 是 |
+| Paddle 又改了「重置峰值」的 API 名 | `local_engines.py` 的 `reset_paddle_peak` 的别名列表加一个 | 否（改数据） |
 | 换 / 加云引擎 | `engines.py` 加一个类（沿用 #60 做法），`ALL_ENGINES` 注册 | 是（一个类 + 一个解析函数） |
 | 夹具换版式 / 字段 | `fixtures.py` 的 `FixtureSpec` | 否（改数据即可） |
 | GT 字段与 TextIn 字段对照 | `gt_field_map.py` | 否 |
