@@ -207,6 +207,98 @@ class TestParseRapidResult:
         with pytest.raises(eng_mod.EngineError, match="RapidOCR"):
             local.parse_rapidocr_result(_Out())
 
+    def test_blank_page_returns_empty(self):
+        """空白页 RapidOCR 给 txts=None（属性在、值为 None）——应返回空列表（#110）。"""
+
+        class _Out:
+            boxes = None
+            txts = None
+            scores = None
+
+        assert local.parse_rapidocr_result(_Out()) == []
+
+    def test_empty_tuple_returns_empty(self):
+        class _Out:
+            boxes = ()
+            txts = ()
+            scores = ()
+
+        assert local.parse_rapidocr_result(_Out()) == []
+
+
+class TestRapidParams:
+    """RapidOCR 3.9 起枚举项必须传 Enum 实例（#110 实测撞上的 TypeError）。
+
+    用替身枚举注入，**本机不装 rapidocr 也跑得通**。
+    """
+
+    @staticmethod
+    def _enums():
+        class _E:
+            def __init__(self, value):
+                self.value = value
+
+        return {name: _E for name in ("ModelType", "OCRVersion", "EngineType", "TaskType")}
+
+    def test_model_type_becomes_enum(self):
+        out = local.rapidocr_params({"Det.model_type": "tiny"}, enums=self._enums())
+        assert out["Det.model_type"].value == "tiny"
+
+    def test_ocr_version_becomes_enum(self):
+        out = local.rapidocr_params({"Rec.ocr_version": "PP-OCRv6"}, enums=self._enums())
+        assert out["Rec.ocr_version"].value == "PP-OCRv6"
+
+    def test_non_enum_param_passes_through(self):
+        out = local.rapidocr_params({"Global.log_level": "info"}, enums=self._enums())
+        assert out["Global.log_level"] == "info"
+
+    def test_every_tier_param_resolves(self):
+        enums = self._enums()
+        for tier in local.RAPID_TIERS:
+            out = local.rapidocr_params(tier.params, enums=enums)
+            assert set(out) == set(tier.params)
+            assert out["Det.model_type"].value in {"tiny", "small", "medium"}
+
+
+class TestVramHelpers:
+    """显存采样的两处小版本差异（#110 实测撞上）。"""
+
+    def test_reset_picks_first_available_alias(self):
+        calls = []
+
+        class _Cuda:
+            def reset_peak_memory_allocated(self):
+                calls.append("peak")
+
+        class _Device:
+            cuda = _Cuda()
+
+        class _Paddle:
+            device = _Device()
+
+        assert local.reset_paddle_peak(_Paddle()) is True
+        assert calls == ["peak"]
+
+    def test_reset_false_when_no_alias(self):
+        class _Paddle:
+            class device:
+                class cuda:
+                    pass
+
+        assert local.reset_paddle_peak(_Paddle()) is False
+
+    def test_visible_gpu_id_single(self, monkeypatch):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2")
+        assert local.visible_gpu_id() == "2"
+
+    def test_visible_gpu_id_multi_is_none(self, monkeypatch):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        assert local.visible_gpu_id() is None
+
+    def test_visible_gpu_id_unset_is_none(self, monkeypatch):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        assert local.visible_gpu_id() is None
+
 
 class TestParseDocOri:
     def test_label_names(self):

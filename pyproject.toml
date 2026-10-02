@@ -26,12 +26,15 @@ excel = ["openpyxl>=3.1", "xlrd>=2.0"]
 bench = ["pymupdf>=1.24", "pillow>=10.0"]
 # 本地 OCR 评测台（#108）。重依赖，只在跑数机器上装；本机不装也能跑 pytest / ruff。
 # GPU 机器请先按 Paddle 官方装 paddlepaddle-gpu（PyPI 上没有 GPU 轮子），再装本 extra。
+# `onnxruntime` 是 RapidOCR 的推理后端：rapidocr 自己不声明引擎（#110 实测缺了跑不起来），
+# 缺它 `local:rapidocr-*` 直接 ImportError。要 GPU 跑 ONNX 就换成 onnxruntime-gpu。
 local-ocr = [
     "pymupdf>=1.24",
     "pillow>=10.0",
     "paddleocr>=3.0",
     "paddlepaddle>=3.0",
     "rapidocr>=3.9",
+    "onnxruntime>=1.17",
 ]
 
 [project.scripts]

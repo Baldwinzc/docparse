@@ -104,23 +104,68 @@ class RapidTier:
     params: dict[str, str]
 
 
+def _rapid_v6_params(model_type: str) -> dict[str, str]:
+    """PP-OCRv6 的 det/rec 档位参数。档位表只存字符串，见 `rapidocr_params`。"""
+
+    return {
+        "Det.model_type": model_type,
+        "Rec.model_type": model_type,
+        "Det.ocr_version": "PP-OCRv6",
+        "Rec.ocr_version": "PP-OCRv6",
+    }
+
+
 RAPID_TIERS: list[RapidTier] = [
-    RapidTier(
-        "v6-tiny",
-        "RapidOCR v6 tiny（ONNX）",
-        {"Det.model_type": "tiny", "Rec.model_type": "tiny"},
-    ),
-    RapidTier(
-        "v6-small",
-        "RapidOCR v6 small（ONNX）",
-        {"Det.model_type": "small", "Rec.model_type": "small"},
-    ),
-    RapidTier(
-        "v6-medium",
-        "RapidOCR v6 medium（ONNX）",
-        {"Det.model_type": "medium", "Rec.model_type": "medium"},
-    ),
+    RapidTier("v6-tiny", "RapidOCR v6 tiny（ONNX）", _rapid_v6_params("tiny")),
+    RapidTier("v6-small", "RapidOCR v6 small（ONNX）", _rapid_v6_params("small")),
+    RapidTier("v6-medium", "RapidOCR v6 medium（ONNX）", _rapid_v6_params("medium")),
 ]
+
+# RapidOCR 3.9 起，`params` 里的枚举项（model_type / ocr_version / engine_type /
+# task_type）**必须传 Enum 实例**，传字符串直接 `TypeError: The value of
+# Det.model_type must be Enum Type.`（#110 实测撞上）。档位表仍存字符串——本机不装
+# rapidocr 也能 import 本模块——到 `_build` 时再经 `rapidocr_params` 转成枚举。
+_RAPID_ENUM_PARAMS: dict[str, str] = {
+    "model_type": "ModelType",
+    "ocr_version": "OCRVersion",
+    "engine_type": "EngineType",
+    "task_type": "TaskType",
+}
+
+
+def rapidocr_params(
+    params: dict[str, str], enums: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """档位表的字符串参数 → RapidOCR 要的 Enum；非枚举项原样传。
+
+    `enums` 仅供单测注入替身（本机不装 rapidocr）；不给时从
+    `rapidocr.utils.typings` 取真枚举，取不到就按字符串原样传（老版本行为）。
+    """
+
+    if enums is None:
+        try:
+            from rapidocr.utils.typings import (  # noqa: PLC0415
+                EngineType,
+                ModelType,
+                OCRVersion,
+                TaskType,
+            )
+
+            enums = {
+                "ModelType": ModelType,
+                "OCRVersion": OCRVersion,
+                "EngineType": EngineType,
+                "TaskType": TaskType,
+            }
+        except ImportError:
+            enums = {}
+
+    resolved: dict[str, Any] = {}
+    for key, value in params.items():
+        enum_name = _RAPID_ENUM_PARAMS.get(key.rsplit(".", 1)[-1])
+        enum_cls = enums.get(enum_name) if enum_name else None
+        resolved[key] = enum_cls(value) if enum_cls is not None else value
+    return resolved
 
 # doc_ori 标签 → 需要施加的「逆时针」角度。
 # PaddleOCR 官方文档给的标签就是 0/90/180/270 四类，本表按「标签即回转度数」写。
@@ -216,17 +261,24 @@ def parse_paddle_result(payload: Any) -> list[OcrBox]:
 
 
 def parse_rapidocr_result(payload: Any) -> list[OcrBox]:
-    """RapidOCR 3.x 的 RapidOCROutput（属性式）→ OcrBox。"""
+    """RapidOCR 3.x 的 RapidOCROutput（属性式）→ OcrBox。
 
-    boxes_attr = getattr(payload, "boxes", None)
-    txts = getattr(payload, "txts", None)
-    scores = getattr(payload, "scores", None)
-    if boxes_attr is None or txts is None:
+    **空白页 / 无检出时 RapidOCR 返回 `txts=None`**（属性在、值为 None），不是结构
+    变了——这要返回空列表，不能当解析失败（#110 probe 在纯白图上撞上）。只有**属性整个
+    不存在**才算小版本改了返回结构，那时把实际属性抛出来。
+    """
+
+    if not (hasattr(payload, "boxes") and hasattr(payload, "txts")):
         raise EngineError(
             "未能从 RapidOCR 结果中解析出文本行；"
             f"实际属性={sorted(a for a in dir(payload) if not a.startswith('_'))[:30]}。"
             "可能是 rapidocr 小版本改了返回结构，核对 parse_rapidocr_result。"
         )
+    boxes_attr = payload.boxes
+    txts = payload.txts
+    scores = getattr(payload, "scores", None)
+    if boxes_attr is None or txts is None or len(txts) == 0:
+        return []
     if hasattr(boxes_attr, "tolist"):
         boxes_attr = boxes_attr.tolist()
     if hasattr(txts, "tolist"):
@@ -426,7 +478,7 @@ class RapidOcrEngine(LocalEngine):
         if self._engine is None:
             from rapidocr import RapidOCR  # noqa: PLC0415
 
-            self._engine = RapidOCR(params=dict(self.tier.params))
+            self._engine = RapidOCR(params=rapidocr_params(self.tier.params))
         return self._engine
 
     def recognize(self, image: bytes) -> OcrResult:
@@ -590,11 +642,11 @@ class VramSampler:
         self._stop.clear()
         paddle = self._paddle_cuda()
         if paddle is not None:
-            self._paddle_ok = True
-            try:
-                paddle.device.cuda.reset_peak_memory_allocated()
-            except Exception:  # noqa: BLE001
-                self._paddle_ok = False
+            # Paddle 的「重置峰值」这项小版本之间改过名（3.3 是
+            # reset_max_memory_allocated，早期叫 reset_peak_memory_allocated /
+            # reset_peak_memory_stats）——#110 实测 3.3.1 没有 reset_peak_*，
+            # 逐个试，都失败才退回 nvidia-smi。
+            self._paddle_ok = reset_paddle_peak(paddle)
         if nvidia_smi_path() is not None:
             self._thread = threading.Thread(target=self._poll, daemon=True)
             self._thread.start()
@@ -635,6 +687,42 @@ class VramSampler:
         )
 
 
+def reset_paddle_peak(paddle: Any) -> bool:
+    """重置 Paddle 的显存峰值计数；返回是否成功。
+
+    这项小版本之间改过名（3.3 是 `reset_max_memory_allocated`，早期是
+    `reset_peak_memory_allocated` / `reset_peak_memory_stats`）——#110 实测
+    3.3.1 上没有 `reset_peak_*`，所以逐个试。
+    """
+
+    for name in (
+        "reset_max_memory_allocated",
+        "reset_peak_memory_allocated",
+        "reset_peak_memory_stats",
+    ):
+        fn = getattr(paddle.device.cuda, name, None)
+        if callable(fn):
+            try:
+                fn()
+                return True
+            except Exception:  # noqa: BLE001 —— 试下一个别名
+                continue
+    return False
+
+
+def visible_gpu_id() -> str | None:
+    """`CUDA_VISIBLE_DEVICES` 只有一个卡号时返回它——nvidia-smi 退路据此只读这张卡。
+
+    不给 / 给了多张就返回 None（退路按整机最大值读，note 里会写明）。
+    """
+
+    raw = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not raw:
+        return None
+    parts = [piece.strip() for piece in raw.split(",") if piece.strip()]
+    return parts[0] if len(parts) == 1 else None
+
+
 def nvidia_smi_path() -> str | None:
     for candidate in ("/usr/bin/nvidia-smi", "/usr/local/bin/nvidia-smi"):
         if os.path.exists(candidate):
@@ -648,9 +736,13 @@ def read_nvidia_smi_used_mb() -> float | None:
     path = nvidia_smi_path()
     if path is None:
         return None
+    command = [path, "--query-gpu=memory.used", "--format=csv,noheader,nounits"]
+    gpu_id = visible_gpu_id()
+    if gpu_id is not None:
+        command += ["-i", gpu_id]
     try:
         out = subprocess.run(
-            [path, "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            command,
             capture_output=True,
             text=True,
             timeout=5,
