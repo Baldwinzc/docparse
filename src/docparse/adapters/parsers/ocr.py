@@ -1,15 +1,17 @@
-"""云 OCR：TextIn 通用文字识别（#60 实测选型，docs/ocr-benchmark.md）。
+"""扫描件 OCR 的公共口：`OcrClient` 协议 + 云端 TextIn 实现（#22 / #60）。
 
-本地优先、云端默认关（CLAUDE.md 约束 · #94）：本文件是**云端 TextIn** 实现，
-密钥留空即不外呼、只降级为 warning。本地 OCR 引擎按同一个 OcrClient 协议
-接入（#99），下游 pdf.py / image.py / pipeline 零改动。
+本地优先、云端默认关（CLAUDE.md 约束 · #94）：`get_ocr_client` 按
+`DOCPARSE_OCR_ENGINE` 选 client，**默认 local**（PaddleOCR PP-OCRv6 small +
+doc-ori，见 `local_ocr.py` / #99）；`textin` 需显式选，且还要过 #100 的云侧硬闸。
+本文件只放协议与云实现；本地实现按同一个协议接在 `local_ocr.py`，
+`pdf.py` / `image.py` / `ocr_layout.py` / pipeline 零改动。
 
-密钥走 DOCPARSE_TEXTIN_APP_ID / DOCPARSE_TEXTIN_SECRET_CODE，无密钥不崩：
+TextIn 密钥走 DOCPARSE_TEXTIN_APP_ID / DOCPARSE_TEXTIN_SECRET_CODE，无密钥不崩：
 降级为 warning，文档照常进流水线（后续 needs_review），不编文字。
 
 坐标约定：请求带 straighten=1，TextIn 返回的所有 bbox 均以**正立图**为
 参照系（官方文档），OcrOutcome.width / height 也是正立后的宽高，
-给 #62 版面重建直接用。
+给 #62 版面重建直接用。本地引擎（local_ocr.py）遵同一条约定。
 """
 
 from __future__ import annotations
@@ -164,13 +166,23 @@ class TextinOcrClient:
 _clients: dict[tuple[str, str], TextinOcrClient] = {}
 
 
-def get_ocr_client(settings: Settings | None = None) -> TextinOcrClient:
-    """按密钥取共享 client；密钥为空也返回（read_image 只告警不出网）。"""
+def get_ocr_client(settings: Settings | None = None) -> OcrClient:
+    """扫描件用哪个 OCR client，按 DOCPARSE_OCR_ENGINE 选。
+
+    默认 local（本地优先，#94）：出网零次；引擎/权重不可用时只告警、不崩。
+    选 textin 时走云实现（密钥为空也返回，read_image 只告警不发请求；#100 再加
+    显式开关的硬闸）。两个实现都遵同一个 OcrClient 协议，下游不感知。
+    """
     resolved = settings or get_settings()
-    key = (resolved.textin_app_id, resolved.textin_secret_code)
-    if key not in _clients:
-        _clients[key] = TextinOcrClient(*key)
-    return _clients[key]
+    if (resolved.ocr_engine or "local").strip().lower() == "textin":
+        key = (resolved.textin_app_id, resolved.textin_secret_code)
+        if key not in _clients:
+            _clients[key] = TextinOcrClient(*key)
+        return _clients[key]
+    # 懒 import：local_ocr 反向依赖本模块的 OcrLine / OcrOutcome，模块级 import 会成环。
+    from docparse.adapters.parsers.local_ocr import get_local_ocr_client
+
+    return get_local_ocr_client(resolved)
 
 
 def ocr_blocks(outcome: OcrOutcome, *, prefix: str, scale: float = 1.0) -> list[TextBlock]:

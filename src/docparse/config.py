@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4.1-mini"
     vlm_model: str = "gpt-4.1-mini"
 
+    # 扫描件 OCR 引擎选择（#99）。本地优先（#94）：默认 local，不出网。
+    # local  = PaddleOCR PP-OCRv6 small + doc-ori 方向分类（#110 选型）
+    # textin = 合合云通用 OCR（保留，需显式选；云侧硬闸见 #100）
+    ocr_engine: str = "local"
+    # 本地引擎设备：auto（有 CUDA 用 gpu，否则 cpu）/ cpu / gpu
+    local_ocr_device: str = "auto"
+    # CPU 上 PaddleOCR 的线程数；None 就用官方默认
+    local_ocr_cpu_threads: int | None = None
+
     # 云 OCR（TextIn 通用，#60 选型）；无密钥时扫描件只登记告警，不崩
     textin_app_id: str = ""
     textin_secret_code: str = ""

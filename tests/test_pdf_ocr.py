@@ -326,10 +326,12 @@ class TestPipelineNoCredentials:
         from docparse.domain.models import JobStatus
         from docparse.pipeline.runner import Pipeline
 
+        # 显式选 textin：本条测的是云路径无密钥不崩（默认走本地引擎，#99）。
         settings = Settings(
             job_store="memory",
             file_store="memory",
             llm_api_key="",
+            ocr_engine="textin",
             textin_app_id="",
             textin_secret_code="",
         )
@@ -343,8 +345,10 @@ class TestPipelineNoCredentials:
     def test_get_ocr_client_reuses_by_credentials(self) -> None:
         from docparse.config import Settings
 
-        settings = Settings(textin_app_id="a", textin_secret_code="b")
+        settings = Settings(ocr_engine="textin", textin_app_id="a", textin_secret_code="b")
         first = get_ocr_client(settings)
         assert get_ocr_client(settings) is first
-        other = get_ocr_client(Settings(textin_app_id="c", textin_secret_code="d"))
+        other = get_ocr_client(
+            Settings(ocr_engine="textin", textin_app_id="c", textin_secret_code="d")
+        )
         assert other is not first
