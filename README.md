@@ -117,7 +117,7 @@ flowchart TB
 |---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 |
 | 安全解压 | `adapters/parsers/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 |
-| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf）。xlsx / 文字层 PDF 全程不出网；扫描页当前走 TextIn 云 OCR（留空密钥即不外呼），本地引擎随 #99 接入 |
+| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 / #110），纯内网，引擎不可用只告警不崩；要外呼须显式选 `DOCPARSE_OCR_ENGINE=textin` |
 | 统一文档 IR | `domain/ir.py` | 已定形状 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 |

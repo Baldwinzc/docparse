@@ -468,16 +468,28 @@ def _has_textin() -> bool:
     return bool(settings.textin_app_id and settings.textin_secret_code)
 
 
-@pytest.mark.skipif(
-    not REAL_PENINSULA.exists() or not _has_textin(),
-    reason="本地半岛样本 + TextIn 密钥才跑，客户原件不入库",
-)
-def test_peninsula_sample_key_head_fields() -> None:
-    """本地真机：关键表头对 #60；对不上 needs_review，不编造。"""
-    job = _pipeline().process(REAL_PENINSULA.name, REAL_PENINSULA.read_bytes())
-    assert job.status.value != "failed"
-    payload = job.result.declaration if job.result else None
-    assert payload is not None
+def _local_ocr_available() -> bool:
+    from docparse.adapters.parsers.local_ocr import dependency_status
+
+    return dependency_status()[0]
+
+
+def _textin_pipeline() -> Pipeline:
+    settings = Settings(
+        job_store="memory", file_store="memory", llm_api_key="", ocr_engine="textin"
+    )
+    return Pipeline(settings=settings, jobs=MemoryJobStore(), files=MemoryFileStore())
+
+
+def _local_pipeline() -> Pipeline:
+    settings = Settings(
+        job_store="memory", file_store="memory", llm_api_key="", ocr_engine="local"
+    )
+    return Pipeline(settings=settings, jobs=MemoryJobStore(), files=MemoryFileStore())
+
+
+def _assert_peninsula_key_head(payload: dict, status: str) -> None:
+    """半岛关键表头对 #23 / #60 口径；对不上 needs_review，不编造。"""
     expected = {
         "grossWt": "1459.62",
         "netWt": "485",
@@ -491,7 +503,20 @@ def test_peninsula_sample_key_head_fields() -> None:
             assert got == value, f"{name}: got {got!r} expected {value!r}"
         else:
             reasons = payload.get("_meta", {}).get("review_reasons") or []
-            assert any(name in reason for reason in reasons) or job.status.value == "needs_review"
+            assert any(name in reason for reason in reasons) or status == "needs_review"
+
+
+@pytest.mark.skipif(
+    not REAL_PENINSULA.exists() or not _has_textin(),
+    reason="本地半岛样本 + TextIn 密钥才跑，客户原件不入库",
+)
+def test_peninsula_sample_key_head_fields() -> None:
+    """云基线（#60）：显式选 textin，关键表头对 #60；对不上 needs_review，不编造。"""
+    job = _textin_pipeline().process(REAL_PENINSULA.name, REAL_PENINSULA.read_bytes())
+    assert job.status.value != "failed"
+    payload = job.result.declaration if job.result else None
+    assert payload is not None
+    _assert_peninsula_key_head(payload, job.status.value)
     goods = payload.get("tdecGoodsitemsVoArr") or []
     if goods:
         # 标准报关单三行一项目（#84）：item1 对照参考识别结果
@@ -520,3 +545,16 @@ def test_peninsula_sample_key_head_fields() -> None:
         assert all(item.get("gmodel") for item in goods)
         assert all(item.get("qty1") for item in goods)
         assert goods[-1].get("gno") == "19"
+
+
+@pytest.mark.skipif(
+    not REAL_PENINSULA.exists() or not _local_ocr_available(),
+    reason="本地半岛样本 + 本地 OCR 依赖（pip install -e '.[local-ocr]'）才跑",
+)
+def test_peninsula_local_engine_key_head_fields() -> None:
+    """#99 验收：本地引擎跑半岛，关键表头与 #23 口径对得上（不出网）。"""
+    job = _local_pipeline().process(REAL_PENINSULA.name, REAL_PENINSULA.read_bytes())
+    assert job.status.value != "failed"
+    payload = job.result.declaration if job.result else None
+    assert payload is not None
+    _assert_peninsula_key_head(payload, job.status.value)

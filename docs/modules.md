@@ -28,7 +28,7 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23）。xlsx / 文字层 PDF 全程不出网；扫描页当前走 TextIn 云 OCR（留空密钥即不外呼），本地引擎随 #99 接入 | zip 拼单 |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 接入 / #110 选型），纯内网，引擎不可用只告警不崩；云端 TextIn 保留，须显式选 `DOCPARSE_OCR_ENGINE=textin` | zip 拼单 |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
 | 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；伪 sheet 同路径（#23：境外发货人锚点、框表标签 fold_key、多页表头取前、同角色货表接续）；旧锚点仍给无 sheet 的文本 | zip 拼单 |
@@ -77,7 +77,7 @@ FastAPI 交单（#21 / #86）：`POST /v1/jobs` 与 `cli declare` 走同一条 p
 
 抽取后校验（#20）：规则先写在 [validate-rules.md](validate-rules.md) 给业务确认。位数 / 正则 / 容差确认后再进数据文件，引擎只执行，不编造、不改值。
 
-云 OCR（#22，选型见 [ocr-benchmark.md](ocr-benchmark.md)）：`adapters/parsers/ocr.py` 的 `TextinOcrClient`，密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警不崩、也不发请求。请求带 `straighten=1`，返回的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。40306 QPS 限流按官方说明不重试、只告警。换 OCR 引擎只在 `ocr.py` 加一个 client 实现 `OcrClient` 协议，不动 `pdf.py` / `image.py` / pipeline——本 Issue 的本地引擎（#99）走的就是这条口，云端 TextIn 保留但默认关（#100）。
+扫描件 OCR（#22 / #60 / #99）：`adapters/parsers/ocr.py` 是公共口——`OcrClient` 协议 + 云实现 `TextinOcrClient`。`get_ocr_client` 按 `DOCPARSE_OCR_ENGINE` 选 client，**默认 local**：`adapters/parsers/local_ocr.py` 的 `LocalOcrClient`（PaddleOCR PP-OCRv6 small + `PP-LCNet_x1_0_doc_ori` 方向分类，#110 选型），懒 import 重依赖，引擎 / 权重不可用时只告警不崩、不编字。`textin` 需显式选（密钥走 `DOCPARSE_TEXTIN_APP_ID` / `DOCPARSE_TEXTIN_SECRET_CODE`，无密钥只告警、也不发请求；云侧硬闸见 #100）。两个实现都遵同一条坐标约定：**先把整页按判定角度转正，再识别**，`OcrOutcome` 的行级 bbox 与页宽高统一以**正立图**为参照系（整页 angle 留档进 warnings）。PDF 逐页：有文字层抽字块带 bbox；无文字层按 `RENDER_ZOOM=2.0` 渲染 JPEG 走 OCR，bbox 除以 zoom 缩回页面 pt。图片（jpg / png）与扫描 PDF 页走同一 `read_image` 入口。TextIn 40306 QPS 限流按官方说明不重试、只告警。**换 / 加 OCR 引擎只加一个 client 实现 `OcrClient` 协议、在 `get_ocr_client` 里登记，不动 `pdf.py` / `image.py` / `ocr_layout.py` / pipeline。**
 
 OCR 版面重建（#62）：`pipeline/steps/reconstruct_layout.py` 挂在 extract 之后、classify 之前。文档有 `pages[].blocks` 且无 `sheets` 时，`adapters/parsers/ocr_layout.py` 按行带聚类 + 分区列切分造伪格子（地址 `p{页}r{行}c{列}`，bbox / block_ids 回指原字块），再复用 `layout.split_sheet` + `sheet_role`。xlsx 已有 sheets 原样跳过。词表 / 刀法零新增。本地对眼：`python -m docparse.cli layout scan.pdf`。
 
