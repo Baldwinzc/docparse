@@ -172,6 +172,14 @@ def test_head_map_split_and_skip() -> None:
     assert schema.field("feeRate").head_map == "skip"
     assert schema.field("cusVoyageNo").head_map == "skip"
     assert schema.field("noteS").anchors == ["备注"]
+    # 企业海关十位编码单独成格时按锚点收；不抢 ownerName 的单位名锚点
+    assert schema.field("ownerCode").head_map != "skip"
+    assert "海关十位编码" in schema.field("ownerCode").anchors
+    assert "企业海关十位编码" in schema.field("ownerCode").anchors
+    assert "生产销售单位" not in schema.field("ownerCode").anchors
+    assert schema.field("ownerName").split_target == "ownerCode"
+    # 一词两用：同一文案两处都要登记（货表列名 + 表头字段标签）
+    assert "海关十位编码" in schema.field("codeTs").anchors
 
 
 def test_goods_map_flags_and_master_signals() -> None:

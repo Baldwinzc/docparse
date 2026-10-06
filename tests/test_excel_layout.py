@@ -267,6 +267,43 @@ def _kv_colon_workbook() -> bytes:
     return buffer.getvalue()
 
 
+def _owner_code_colon_workbook() -> bytes:
+    """国光箱单发票合同形态：企业海关十位编码用格内冒号给出（#54 后续）。
+
+    同一格文案「海关十位编码」既是货表列名（table.code_ts），也是表头字段标签
+    （box.owner_code）——一词两用。另放一格未登记的 TABLE 文案做守卫对照。
+    """
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "总箱单"
+    sheet["E1"] = "国光电器股份有限公司"
+    sheet["E5"] = "装箱单 PACKING LIST"
+    sheet["A6"] = "日期DATE:"
+    sheet["B6"] = datetime(2026, 7, 17)
+    sheet["A7"] = "发票/INVOICE NO.:"
+    sheet["B7"] = "26VN0502-1"
+    sheet["G7"] = "合同号CONTRACT NO.:"
+    sheet["H7"] = "26VN0502"
+    sheet["O7"] = "海关十位编码：4401968GLF"
+    sheet["O9"] = "商品名称及规格型号：示例"
+    for row in sheet.iter_rows(min_row=1, max_row=9, min_col=1, max_col=16):
+        for cell in row:
+            cell.border = _thin()
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_registered_box_key_wins_over_table_token_guard() -> None:
+    """显式登记的 BOX/KV 键优先于 TABLE token 守卫；未登记的仍被挡住。"""
+    document = parse_excel(
+        _owner_code_colon_workbook(), file_id="okv", filename="owner.xlsx"
+    )
+    pairs = _pairs(document.sheets[0])
+    assert pairs["海关十位编码"] == "4401968GLF"
+    assert "商品名称及规格型号" not in pairs
+
+
 def _dual_header_workbook() -> bytes:
     book = Workbook()
     contract = book.active
