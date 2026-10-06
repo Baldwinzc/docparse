@@ -448,9 +448,12 @@ head:
     group: head
     layout: box_kv
     sources: [customs_declaration]
-    anchors: [生产销售单位, 消费使用单位]
-    head_map: skip
-    notes: 由 ownerName 的 trailing_code 拆出，不单独按锚点收。
+    anchors: [海关十位编码, 企业海关十位编码]
+    notes: >-
+      两个来源：① 文件单独印一格「海关十位编码：…」时按锚点收（国光箱单发票合同
+      没有「生产销售单位」块，O7 是 ownerCode 的唯一来源）；② 与名称同格时由
+      ownerName 的 trailing_code 拆出。不写 生产销售单位 / 消费使用单位 锚点——
+      那会把 ownerName 的公司名整段写进代码字段。
 
   - name: ownerScc
     display_name: 18位生产销售单位信用代码

@@ -400,7 +400,14 @@ def _same_cell_colon(cell: Cell) -> KeyValue | None:
         return None
     if _DATETIME_LEFT.match(key) or _TIME_FULL.match(key):
         return None
-    if any(_token_in_text(token, key) for token in _table_tokens()):
+    # 未登记为 BOX/KV 的键里带 TABLE token：是表头文案（如「商品名称及规格型号：…」），
+    # 不当键值。**显式登记过的 BOX/KV 键优先**——「海关十位编码」既是一词两用的
+    # 货表列名（table.code_ts，#54），也是表头字段标签（box.owner_code）；只按
+    # TABLE 命中就否掉，会把国光箱单 O7 这类合法 KV 整条丢掉。表内格子早已被
+    # occupied 排除，走不到这里，所以守卫收窄不影响 #13 的原意。
+    if not is_known_key(key) and any(
+        _token_in_text(token, key) for token in _table_tokens()
+    ):
         return None
     return KeyValue(
         key=key,

@@ -202,6 +202,34 @@ def test_guoguang_packing_contract_and_parties() -> None:
     assert not any(item.value == "26VN0502-1" for item in fields)
 
 
+def _owner_code_sheet(sheet) -> None:
+    """企业海关十位编码单独一格（国光箱单发票合同 O7 形态）。"""
+    sheet["E1"] = "国光电器股份有限公司"
+    sheet["E5"] = "装箱单 PACKING LIST"
+    sheet["A6"] = "日期DATE:"
+    sheet["A7"] = "发票/INVOICE NO.:"
+    sheet["B7"] = "26VN0502-1"
+    sheet["O7"] = "海关十位编码：4401968GLF"
+    for row in sheet.iter_rows(min_row=1, max_row=7, min_col=1, max_col=16):
+        for cell in row:
+            cell.border = _thin()
+
+
+def test_owner_code_from_standalone_colon_kv() -> None:
+    """格内冒号给出的企业海关十位编码落进 ownerCode，且不污染 ownerName。"""
+    document = parse_excel(
+        _workbook({"总箱单": _owner_code_sheet}),
+        file_id="ownercode",
+        filename="owner-code.xlsx",
+    )
+    fields = map_sheet_head(document.sheets[0], document)
+    by_name = {item.name: item for item in fields}
+    assert by_name["ownerCode"].value == "4401968GLF"
+    assert by_name["ownerCode"].evidence[0].cell == "总箱单!O7"
+    assert "ownerName" not in by_name
+    assert all(item.evidence for item in fields)
+
+
 def test_exclude_sheet_is_not_mapped() -> None:
     document = parse_excel(
         _workbook({"Sheet3": _auxiliary_with_contract}),

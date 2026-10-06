@@ -160,6 +160,19 @@ box:
       - text: 消费使用单位
         source: "#12 owner* 进出口镜像；本张无独立格"
 
+  # 企业海关十位编码（≠ 货表列名「商品编号」）。国光箱单发票合同把企业编码
+  # 单独印成一格「海关十位编码：4401968GLF」，该工作簿没有「生产销售单位」块，
+  # 这是 ownerCode 的唯一来源。
+  # 与 table.code_ts 的「海关十位编码」同名是**一词两用**：那边是货表列名、
+  # 这里是表头字段标签。两处都要登记；冒号拆键时显式登记的 BOX/KV 优先
+  # （未登记的 TABLE token 仍被守卫挡住，见 layout.py `_same_cell_colon`）。
+  - id: owner_code
+    aliases:
+      - text: 海关十位编码
+        source: 国光总箱单!O7「海关十位编码：4401968GLF」
+      - text: 企业海关十位编码
+        source: "#12 ownerCode anchors 镜像写法"
+
   - id: supv_mode
     aliases:
       - text: 监管方式

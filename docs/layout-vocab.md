@@ -15,6 +15,7 @@
 | 例外 | 一行格子去冒号后**全部**是 BOX 标签（至少 3 个）→ 框表标签横排，不当表头。否则「毛重」进 TABLE 后会把恒信草单 r11 吃成表 |
 | 双行表头 | 表头下一行像翻译（≥2 格像列名、不像数字/日期）→ 并入 `headers`（中英文空格拼接），英文行不当 body[0]。`header_row` 仍是第一行，`header_rows` 记下两行 |
 | 冒号 | 半角 `:`、全角 `：`、小冒号 `﹕`（U+FE55）、竖排 `︰`。整格已是日期时间则不切；切完左侧像日期时间也不切。值里后续冒号保留 |
+| 冒号与 TABLE 撞车 | 切完的左侧若命中 TABLE token，默认不当 KV（表头文案防线）。**但显式登记为 BOX/KV 的键优先**——「海关十位编码」既是货表列名（`table.code_ts`）也是表头字段标签（`box.owner_code`），只按 TABLE 否掉会把国光箱单 `总箱单!O7` 这类合法 KV 整条丢掉。表内格子早被 `occupied` 排除，守卫收窄不影响表头行 |
 
 几何策略先收集 `same_cell` / `below` / `right`，再按词表 id 上的 `value:` 过滤；剩多个才用 `same_cell` > `below` > `right` 决胜。无 `value:` 的键与 #15 互斥结果一致。新 xlsx 往哪加见 [#31](https://github.com/Baldwinzc/docparse/issues/31)。
 
@@ -82,6 +83,8 @@
 ## 增别名
 
 改 YAML，不必改 Python。新格子关系（不是新文案）另开刀法 Issue。以后新表对照 [#31](https://github.com/Baldwinzc/docparse/issues/31)。
+
+同一个文案**一词两用**（既是货表列名也是表头字段标签，如「海关十位编码」「海关编码」）时，`table` 与 `box`/`kv` **两处都要登记**：只登记 TABLE，冒号拆出的 KV 会被守卫挡住；只登记 BOX/KV，货表列名认不出来。两处都登记后由 `layout.py _same_cell_colon` 的优先级（登记过的键优先）决定，不改 Python。
 
 ## OCR 伪格子（#62）
 
