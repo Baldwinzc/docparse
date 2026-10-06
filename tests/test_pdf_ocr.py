@@ -225,6 +225,15 @@ def _transport(payload: dict | None = None, *, status: int = 200, error: Excepti
     return httpx.MockTransport(handler), calls
 
 
+def _textin(app_id: str, secret: str, *, transport: httpx.BaseTransport) -> TextinOcrClient:
+    """本节测的是**云端行为本身**（解析 / 限流 / 错误码），所以一律显式开闸。
+
+    #100 起云 client 默认不发 HTTP，不开闸就根本走不到 transport，测不到这些分支；
+    闸门自己的用例在 tests/test_offline_gate.py。
+    """
+    return TextinOcrClient(app_id, secret, allow_cloud=True, transport=transport)
+
+
 def _success_payload() -> dict:
     return {
         "code": 200,
@@ -251,7 +260,7 @@ def _success_payload() -> dict:
 class TestTextinClient:
     def test_success_parse_lines_and_headers(self) -> None:
         transport, calls = _transport(_success_payload())
-        client = TextinOcrClient("app-id", "secret", transport=transport)
+        client = _textin("app-id", "secret", transport=transport)
         outcome = client.read_image(b"\xff\xd8\xffimg", filename="x.jpg")
         assert outcome.warnings == []
         assert len(outcome.lines) == 1
@@ -268,7 +277,7 @@ class TestTextinClient:
 
     def test_rate_limited_no_retry(self) -> None:
         transport, calls = _transport({"code": 40306, "message": "QPS超过限制"})
-        client = TextinOcrClient("app-id", "secret", transport=transport)
+        client = _textin("app-id", "secret", transport=transport)
         outcome = client.read_image(b"img", filename="x.jpg")
         assert outcome.lines == []
         assert "限流" in outcome.warnings[0]
@@ -276,19 +285,19 @@ class TestTextinClient:
 
     def test_other_error_code_warns(self) -> None:
         transport, _calls = _transport({"code": 40102, "message": "验证失败"})
-        client = TextinOcrClient("app-id", "secret", transport=transport)
+        client = _textin("app-id", "secret", transport=transport)
         outcome = client.read_image(b"img", filename="x.jpg")
         assert "code=40102" in outcome.warnings[0]
 
     def test_network_error_warns_not_raises(self) -> None:
         transport, _calls = _transport(error=httpx.ConnectError("boom"))
-        client = TextinOcrClient("app-id", "secret", transport=transport)
+        client = _textin("app-id", "secret", transport=transport)
         outcome = client.read_image(b"img", filename="x.jpg")
         assert "请求失败" in outcome.warnings[0]
 
     def test_missing_credentials_no_http(self) -> None:
         transport, calls = _transport(_success_payload())
-        client = TextinOcrClient("", "", transport=transport)
+        client = _textin("", "", transport=transport)
         outcome = client.read_image(b"img", filename="x.jpg")
         assert "密钥" in outcome.warnings[0]
         assert calls == []
@@ -326,12 +335,14 @@ class TestPipelineNoCredentials:
         from docparse.domain.models import JobStatus
         from docparse.pipeline.runner import Pipeline
 
-        # 显式选 textin：本条测的是云路径无密钥不崩（默认走本地引擎，#99）。
+        # 显式选 textin **且显式开闸**：本条测的是云路径「密钥缺失」不崩
+        # （默认走本地引擎 #99；云侧硬闸 #100 的用例在 tests/test_offline_gate.py）。
         settings = Settings(
             job_store="memory",
             file_store="memory",
             llm_api_key="",
             ocr_engine="textin",
+            allow_cloud=True,
             textin_app_id="",
             textin_secret_code="",
         )
@@ -352,3 +363,14 @@ class TestPipelineNoCredentials:
             Settings(ocr_engine="textin", textin_app_id="c", textin_secret_code="d")
         )
         assert other is not first
+        # 开闸与否也进缓存键（#100）：否则开了闸的配置会复用被闸住的 client。
+        opened = get_ocr_client(
+            Settings(
+                ocr_engine="textin",
+                textin_app_id="a",
+                textin_secret_code="b",
+                allow_cloud=True,
+            )
+        )
+        assert opened is not first
+        assert opened.allow_cloud is True

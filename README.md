@@ -117,7 +117,7 @@ flowchart TB
 |---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 |
 | 安全解压 | `adapters/parsers/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 |
-| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 / #110），纯内网，引擎不可用只告警不崩；要外呼须显式选 `DOCPARSE_OCR_ENGINE=textin` |
+| 按文件类型解析 | `adapters/parsers/` | 文本 / Excel 可用；PDF 文字层 + 扫描 OCR、图片 OCR（#22，需 pymupdf）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 / #110），纯内网，引擎不可用只告警不崩；要外呼须同时显式选 `DOCPARSE_OCR_ENGINE=textin` **且** `DOCPARSE_ALLOW_CLOUD=true` |
 | 统一文档 IR | `domain/ir.py` | 已定形状 |
 | 文档分类 | `extraction/classify.py` | 关键词占位 |
 | 字段抽取 | `extraction/fields.py` | 锚点规则 + LLM 接口 |
@@ -125,7 +125,7 @@ flowchart TB
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现 |
-| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式配置则跳过（本地端点 #101、离线开关 #100） |
+| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式启用（`DOCPARSE_ALLOW_CLOUD`）则连请求都不构造（#100 硬闸）。本地端点 #101 |
 
 完整拆 Issue 顺序见 [docs/modules.md](docs/modules.md)。
 

@@ -464,8 +464,13 @@ def test_api_upload_png_same_shape(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _has_textin() -> bool:
+    """云基线要同时具备：密钥 + **显式开闸**（#100）。
+
+    只看密钥是不够的——闸门默认关，不显式开闸就发不出请求，这条基线会退化成空跑。
+    所以顺带把「跑这条会真的外呼」这件事绑在开关上：要跑云基线就明确开闸。
+    """
     settings = get_settings()
-    return bool(settings.textin_app_id and settings.textin_secret_code)
+    return bool(settings.textin_app_id and settings.textin_secret_code and settings.allow_cloud)
 
 
 def _local_ocr_available() -> bool:
@@ -475,8 +480,13 @@ def _local_ocr_available() -> bool:
 
 
 def _textin_pipeline() -> Pipeline:
+    # allow_cloud=True：云基线本身就是「显式启用才外呼」的那个显式（#100）
     settings = Settings(
-        job_store="memory", file_store="memory", llm_api_key="", ocr_engine="textin"
+        job_store="memory",
+        file_store="memory",
+        llm_api_key="",
+        ocr_engine="textin",
+        allow_cloud=True,
     )
     return Pipeline(settings=settings, jobs=MemoryJobStore(), files=MemoryFileStore())
 

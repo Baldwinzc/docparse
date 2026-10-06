@@ -54,18 +54,19 @@ CLI 打印的是对眼形状（字段上是名称，带 `_meta`），不是合�
 
 复制 `.env.example` 为 `.env`。前缀一律 `DOCPARSE_`。
 
-**默认不出网**：下面两处云端 Key 都留空时，进程不会发任何外部请求（#94）。要外呼必须显式填。
+**默认不出网**：`DOCPARSE_ALLOW_CLOUD` 默认 `false`，云 OCR 与云 LLM **连请求都不构造**——下面两处云端 Key 填了也不外发（#94 / #100 硬闸）。要外呼必须显式把它改 `true`，这一步是刻意的。
 
 | 变量 | 何时要 | 没有会怎样 |
 |---|---|---|
-| `DOCPARSE_TEXTIN_APP_ID` | 扫描件 PDF、jpg/png（本地 OCR #99 接入前） | 流水线不崩、**也不外呼**；该页没有文字，后续字段空、对眼页 `needs_review` |
+| `DOCPARSE_ALLOW_CLOUD` | **要外呼就必须设 `true`**（云 OCR 或云 LLM 任一） | 保持 `false`（默认）时两个云 client 都不发 HTTP，只登记告警、文档进 `needs_review`；xlsx / 文字层 PDF / 本地 OCR 不受影响 |
+| `DOCPARSE_TEXTIN_APP_ID` | 扫描件 PDF、jpg/png 要**走云**时（本地引擎 #99 已默认接管，一般不必） | 流水线不崩、**也不外呼**；该页没有文字，后续字段空、对眼页 `needs_review` |
 | `DOCPARSE_TEXTIN_SECRET_CODE` | 同上 | 同上 |
 | `DOCPARSE_LLM_API_KEY` | **本期合单不需要** | 规则抽不到的字段保持空，不调模型，**不外呼** |
-| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | 仅配了 LLM Key 时 | 默认走 OpenAI 兼容口；本地端点（#101）改这里指向内网地址 |
+| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | 仅配了 LLM Key 时 | 默认走 OpenAI 兼容口；本地端点（#101）改这里指向内网地址，**同样要开 `DOCPARSE_ALLOW_CLOUD`** |
 
-xlsx / 有文字层的 PDF **不必** TextIn，本来就不出网。扫描件（半岛 SJ25084373 这类）在本地引擎接入（#99）前必须配，否则抽空。
+xlsx / 有文字层的 PDF 本来就不出网。扫描件现在**默认走本地引擎**（#99：PaddleOCR PP-OCRv6 small + doc-ori），不配 TextIn、不开闸也能跑，只是引擎/权重不可用时该页抽空、进 `needs_review`。零外呼这件事有留在仓库的自动化验证：`tests/test_offline_gate.py`（拦 httpx transport，覆盖纯 xlsx 与扫描 PDF 两条路径）。
 
-申请：合合 TextIn 开放平台 → 通用文字识别（多页）`https://api.textin.com/ai/service/v2/recognize/multipage`。选型记录见 [ocr-benchmark.md](ocr-benchmark.md)（历史基线）。QPS 超限（官方 40306）只告警不重试。**需要纯内网的场景请等 #99 / #102，或先只跑 xlsx 与文字层 PDF。**
+申请：合合 TextIn 开放平台 → 通用文字识别（多页）`https://api.textin.com/ai/service/v2/recognize/multipage`。选型记录见 [ocr-benchmark.md](ocr-benchmark.md)（历史基线）。QPS 超限（官方 40306）只告警不重试。**纯内网部署的离线安装与权重分发见 #102。**
 
 不要配、本期也接不上：
 

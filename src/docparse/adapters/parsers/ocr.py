@@ -2,7 +2,9 @@
 
 本地优先、云端默认关（CLAUDE.md 约束 · #94）：`get_ocr_client` 按
 `DOCPARSE_OCR_ENGINE` 选 client，**默认 local**（PaddleOCR PP-OCRv6 small +
-doc-ori，见 `local_ocr.py` / #99）；`textin` 需显式选，且还要过 #100 的云侧硬闸。
+doc-ori，见 `local_ocr.py` / #99）；`textin` 需显式选，且还要过硬闸——未显式启用
+`DOCPARSE_ALLOW_CLOUD` 时 `TextinOcrClient` 连请求都不构造（#100，闸门见
+`adapters/cloud_gate.py`）。
 本文件只放协议与云实现；本地实现按同一个协议接在 `local_ocr.py`，
 `pdf.py` / `image.py` / `ocr_layout.py` / pipeline 零改动。
 
@@ -21,6 +23,7 @@ from typing import Protocol
 
 import httpx
 
+from docparse.adapters.cloud_gate import cloud_blocked_reason
 from docparse.config import Settings, get_settings
 from docparse.domain.ir import BoundingBox, TextBlock
 
@@ -108,6 +111,10 @@ class TextinOcrClient:
 
     header 鉴权、octet-stream 传图、60s 超时；40306 QPS 限流按官方说明
     不重试、只告警。transport 供测试注入 MockTransport。
+
+    硬闸（#100）：`allow_cloud` 默认 False，read_image 第一件事就是查闸，
+    被闸住时**连 headers 都不构造**，直接返回 warning。所以默认配置下，
+    即使密钥填齐也不会外发；要外呼必须显式 `DOCPARSE_ALLOW_CLOUD=true`。
     """
 
     def __init__(
@@ -115,13 +122,18 @@ class TextinOcrClient:
         app_id: str,
         secret_code: str,
         *,
+        allow_cloud: bool = False,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.app_id = app_id
         self.secret_code = secret_code
+        self.allow_cloud = allow_cloud
         self._transport = transport
 
     def read_image(self, data: bytes, *, filename: str) -> OcrOutcome:
+        blocked = cloud_blocked_reason(allow_cloud=self.allow_cloud)
+        if blocked:
+            return OcrOutcome(warnings=[f"{blocked}（{filename}）"])
         if not self.app_id or not self.secret_code:
             return OcrOutcome(
                 warnings=[
@@ -163,21 +175,27 @@ class TextinOcrClient:
         return parse_textin_general(payload)
 
 
-_clients: dict[tuple[str, str], TextinOcrClient] = {}
+_clients: dict[tuple[str, str, bool], TextinOcrClient] = {}
 
 
 def get_ocr_client(settings: Settings | None = None) -> OcrClient:
     """扫描件用哪个 OCR client，按 DOCPARSE_OCR_ENGINE 选。
 
     默认 local（本地优先，#94）：出网零次；引擎/权重不可用时只告警、不崩。
-    选 textin 时走云实现（密钥为空也返回，read_image 只告警不发请求；#100 再加
-    显式开关的硬闸）。两个实现都遵同一个 OcrClient 协议，下游不感知。
+    选 textin 时走云实现，且要过 #100 的硬闸：`DOCPARSE_ALLOW_CLOUD` 未显式启用
+    时 read_image 只告警、不发请求（密钥为空也返回，同样只告警）。两个实现都遵
+    同一个 OcrClient 协议，下游不感知。
     """
     resolved = settings or get_settings()
     if (resolved.ocr_engine or "local").strip().lower() == "textin":
-        key = (resolved.textin_app_id, resolved.textin_secret_code)
+        # allow_cloud 进缓存键：开关不同不能复用同一个 client
+        key = (resolved.textin_app_id, resolved.textin_secret_code, resolved.allow_cloud)
         if key not in _clients:
-            _clients[key] = TextinOcrClient(*key)
+            _clients[key] = TextinOcrClient(
+                resolved.textin_app_id,
+                resolved.textin_secret_code,
+                allow_cloud=resolved.allow_cloud,
+            )
         return _clients[key]
     # 懒 import：local_ocr 反向依赖本模块的 OcrLine / OcrOutcome，模块级 import 会成环。
     from docparse.adapters.parsers.local_ocr import get_local_ocr_client
