@@ -58,6 +58,7 @@ def _cloud_settings(**overrides) -> Settings:
         "ocr_engine": "textin",
         "textin_app_id": "app-id",
         "textin_secret_code": "secret-code",
+        "llm_engine": "cloud",
         "llm_base_url": "https://api.openai.com/v1",
         "llm_api_key": "sk-not-a-real-key",
     }

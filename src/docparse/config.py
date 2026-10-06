@@ -16,6 +16,19 @@ class Settings(BaseSettings):
     # 不看端点地址：内网端点（#101）同样要显式开闸。闸门实现在 adapters/cloud_gate.py。
     allow_cloud: bool = False
 
+    # LLM 端点档位（#101）。本地优先（#94）：默认 local，指内网可起的 OpenAI 兼容
+    # 服务（vLLM / Ollama）；cloud 是云端 OpenAI 兼容口，保留但需显式选。两档同一套
+    # 协议、同一个硬闸——未显式启用 DOCPARSE_ALLOW_CLOUD 一律不发 HTTP（#100）。
+    # 只看档位不看地址：不猜某个地址算不算内网，由配置显式声明（同 cloud_gate 口径）。
+    llm_engine: str = "local"
+
+    # 本地档（llm_engine=local）：内网 vLLM / Ollama 的 OpenAI 兼容口。
+    # 本地端点通常不鉴权，密钥可留空；Ollama 要求非空但忽略内容，填任意串即可。
+    llm_local_base_url: str = "http://127.0.0.1:11434/v1"
+    llm_local_model: str = "qwen3:4b"
+    llm_local_api_key: str = ""
+
+    # 云端档（llm_engine=cloud）：云端 OpenAI 兼容口，必须配密钥才发请求。
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-4.1-mini"

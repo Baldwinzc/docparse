@@ -393,7 +393,7 @@ C 组：走方向分类但把判定角度换成人为指定的正确值     ← 
 | 启动 | `vllm serve <model>` | `ollama serve` + `ollama pull <model>` |
 | 硬件要求 | 官方 README：NVIDIA / AMD / Intel GPU、x86/ARM/PowerPC CPU **均可**（未给 VRAM 数字） | 官方未给 |
 
-**共同点（#100 要用）：** 两者都能起一个只监听内网的 OpenAI 兼容端点，现有 [openai_compat.py](../src/docparse/adapters/llm/openai_compat.py) 只换 `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` 即可对上，**协议不用改**。
+**共同点（#100 / #101 要用）：** 两者都能起一个只监听内网的 OpenAI 兼容端点，现有 [openai_compat.py](../src/docparse/adapters/llm/openai_compat.py) 只把档位 `DOCPARSE_LLM_ENGINE` 留作 `local`、再把 `DOCPARSE_LLM_LOCAL_BASE_URL` / `DOCPARSE_LLM_LOCAL_MODEL` 指过去即可对上，**协议不用改**（#101 落地，见 §5.4）。
 
 ### 5.2 模型档位与体积
 
@@ -415,6 +415,39 @@ Ollama 官方模型页给了**确定的文件体积**（已核对 [ollama.com/li
 ### 5.3 默认关（与 #100 同一套语义）
 
 两个 client（云 OCR / 云 LLM）共用一套开关语义：**未显式启用则不发 HTTP**。本地端点同样默认关——「本地」不等于「可以随便起服务」，配置项、端口、模型名都要显式写。#100 负责这条闸的落地与零外呼验证。
+
+### 5.4 #101 落地：档位与本地端点
+
+已在 [openai_compat.py](../src/docparse/adapters/llm/openai_compat.py) + [config.py](../src/docparse/config.py) 落地，与 #99 的 `DOCPARSE_OCR_ENGINE`（`local` / `textin`）同形：
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `DOCPARSE_LLM_ENGINE` | `local` | `local` = 内网 OpenAI 兼容口；`cloud` = 云端口（需密钥）。除 `cloud` 外的取值一律按 `local` 处理——档位写错时倒向**不出网**那一档 |
+| `DOCPARSE_LLM_LOCAL_BASE_URL` | `http://127.0.0.1:11434/v1` | 本地端点地址（Ollama 默认口）；vLLM 按 `vllm serve` 的监听地址改 |
+| `DOCPARSE_LLM_LOCAL_MODEL` | `qwen3:4b`（§5.2 的 4B 保守起点） | 本地模型名 |
+| `DOCPARSE_LLM_LOCAL_API_KEY` | 空 | 本地端点通常不鉴权，可留空（空则不带头）；Ollama 要求非空但忽略内容，填任意串即可 |
+| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` / `DOCPARSE_LLM_API_KEY` | 云端 | 仅 `llm_engine=cloud` 时生效，仍强制密钥 |
+
+**两档共用 #100 的硬闸**：`DOCPARSE_ALLOW_CLOUD` 未显式 `true` 时，本地档也一样一次 HTTP 都不发（`cloud_gate` 只看开关、不看地址）。**默认零外呼**，不用拔网线也能验。
+
+**怎么验证本 Issue 的验收（「启用时能对着内网端点跑通一次 `complete_json`」）：**
+
+```bash
+# 1) 起一个内网 OpenAI 兼容端点（二选一，任选本机可跑）
+ollama serve && ollama pull qwen3:4b         # 默认 http://127.0.0.1:11434/v1
+vllm serve Qwen/Qwen3-4B-Instruct-2507        # 默认 http://127.0.0.1:8000/v1，改上面的 BASE_URL
+
+# 2) .env：保持 llm_engine=local，显式开闸
+DOCPARSE_ALLOW_CLOUD=true
+DOCPARSE_LLM_LOCAL_BASE_URL=http://127.0.0.1:11434/v1
+DOCPARSE_LLM_LOCAL_MODEL=qwen3:4b
+
+# 3) 跑一次
+python -c "from docparse.adapters.llm import OpenAICompatClient; \
+print(OpenAICompatClient().complete_json(system='只输出 JSON', user='回 {\"ok\": true}'))"
+```
+
+**注意：本 Issue 不解决消歧效果。** `fields.yaml` 目前没有任何字段启用 `llm` extractor，抽取行为与 #101 前完全一致（`tests/test_local_llm.py` 有一条守门断言盯着）。#26 / #27 真要启用 LLM 时，本地模型的质量要**另评**，不能拿本 Issue 的「跑得通」当效果背书。
 
 ---
 
@@ -474,7 +507,7 @@ Ollama 官方模型页给了**确定的文件体积**（已核对 [ollama.com/li
 | **加 / 换整页方向分类** | 同上，方向分类作为本地 client 的前置步骤；若独立成模块则新加一个类 | 要；**注意 bbox 参照系必须仍是正立图**（§3.5） |
 | **加版面分析**（§4.1） | 新增解析步骤 + `pipeline/steps/` 挂点，输出区域框进 IR（`domain/ir.py` 可能要加字段） | 要，且要重跑 #62 / #23 验收；**改动面比前几项大，因为它改的是 IR 结构** |
 | **加一个表格结构识别**（§4.2） | 新增解析步骤 + `pipeline/steps/` 挂点，替换或旁路 `ocr_layout.py` 的伪格子 | 要，且要重跑 #62 / #23 验收 |
-| **换本地 LLM 服务端** | 只改 `.env` 的 `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | **不要**（vLLM / Ollama 等 OpenAI 兼容端点同一套协议） |
+| **换本地 LLM 服务端** | 只改 `.env` 的 `DOCPARSE_LLM_LOCAL_BASE_URL` / `DOCPARSE_LLM_LOCAL_MODEL`（vLLM ↔ Ollama 同协议） | **不要**（OpenAI 兼容端点同一套协议；`config.py` 的档位 `local` 已就位，#101） |
 | **上一条 VLM 主路径**（GLM-OCR / PaddleOCR-VL-1.6 一类） | 不是「加引擎」而是**改链路**：`ocr_layout.py` + 规则链要让位给端到端输出 | 要，且是重新开 Epic 的规模（与 #11 冻结的「VLM 非必须」冲突，需先改冻结结论） |
 | **新增评测引擎 / 样本** | `benchmarks/ocr/engines.py`（加引擎适配器）、`benchmarks/ocr/real.py` + `DOCPARSE_OCR_DEMO_DIR`（加真机样本） | 要（#97 的实现文件） |
 | **新增候选调研**（不写代码） | 就在本文件对应章节加一行，写清四列 + 官方链接 + 核验状态 | 不要 |
