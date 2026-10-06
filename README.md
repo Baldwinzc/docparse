@@ -125,7 +125,7 @@ flowchart TB
 | 包级对账 | `pipeline/steps/reconcile.py` | 同名字段冲突 |
 | 自动通过 / 待复核 | `pipeline/steps/route_review.py` | 只打状态 |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现 |
-| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式启用（`DOCPARSE_ALLOW_CLOUD`）则连请求都不构造（#100 硬闸）。本地端点 #101 |
+| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式启用（`DOCPARSE_ALLOW_CLOUD`）则连请求都不构造（#100 硬闸）。档位 `DOCPARSE_LLM_ENGINE` 默认 `local`，指内网 OpenAI 兼容服务（vLLM / Ollama，#101）；`cloud` 是云端口，保留、需显式选 |
 
 完整拆 Issue 顺序见 [docs/modules.md](docs/modules.md)。
 
@@ -137,7 +137,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
 
-uvicorn docparse.api.app:app --reload --port 8088
+PYTHONPATH=src uvicorn docparse.api.app:app --reload --port 8088
 ```
 
 健康检查：
@@ -154,12 +154,43 @@ python -m docparse.cli layout path/to/file.xlsx   # 只看键值和表，不做�
 python -m docparse.cli declare path/to/file.xlsx  # 组装一张报关单 JSON
 ```
 
+### 扫描件要另装本地 OCR
+
+xlsx / 文字层 PDF 只要上面的基础依赖。**扫描件 / 图片**默认走本地 OCR（#99 / #110：PaddleOCR PP-OCRv6 small + doc-ori），要另装重依赖：
+
+```bash
+pip install -e ".[local-ocr]"     # CPU 机器
+```
+
+**GPU 机器**：PyPI 上没有 `paddlepaddle-gpu` 轮子，先按 Paddle 官方装，再显式装 `paddleocr`：
+
+```bash
+python -m pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+python -m pip install paddleocr rapidocr onnxruntime pillow
+```
+
+**GPU 机器不要用 `.[local-ocr]` extra**——它钉的是 CPU 版 `paddlepaddle`，会把 GPU 版盖掉。原因与完整清单见 [docs/handover.md](docs/handover.md) §1.3。
+
+权重**不随 `pip install` 落地**：首次真正识别时才由 PaddleX 下到 `~/.paddlex/official_models/`（实测三个模型共约 37 MB）。**这一次要外网**，下过之后就不再需要。
+
+### 离线机器（无外网）怎么部署
+
+依赖 wheel 与 OCR 权重都随交付包分发，目标机全程不出网：
+
+- 打包、离线安装、无外网启动、端到端验证、故障排查：**[docs/handover.md](docs/handover.md) §1**
+- 权重放哪、怎么校验、`PADDLE_PDX_CACHE_HOME` 怎么设（**要 export，不能写 `.env`**）：同 §1.3–§1.5
+
+一句话：把依赖 wheel 与 `~/.paddlex/official_models/` 打成一个包，目标机 `pip install --no-index --find-links wheels -r requirements.txt`，再把权重拷到 `PADDLE_PDX_CACHE_HOME` 指的位置。
+
 ## 文档
 
-- [合单对接交付](docs/handover.md)（怎么跑、调哪个口、字段要点、要什么 Key）
+- [合单对接交付](docs/handover.md)（**部署 / 离线安装 / 故障排查**、怎么跑、调哪个口、字段要点）
 - [流程图](docs/flow.html)（浏览器用 `file://` 打开本地文件）
 - [设计文档](docs/design.md)
 - [模块地图](docs/modules.md)（后期按模块拆 Issue）
+- [本地 OCR 实测与选型](docs/local-ocr-benchmark.md)（#97 / #110）
+- [容量与规格实测](docs/capacity-benchmark.md)（#98，供采购）
+- [本地引擎调研](docs/local-models-survey.md)（#96；含云 API 对照）
 - [云模型调研](docs/model-survey.md)（历史对照，非主路径；价格均附来源链接）
 - [字段 Schema](docs/field-schema.md)
 - [码表加载](docs/code-tables.md)
