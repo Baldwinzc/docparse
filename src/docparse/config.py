@@ -11,6 +11,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # 云端外呼硬闸（#100）。默认 false：未显式启用时，下面的云 OCR（TextIn）与云
+    # LLM 一律不构造请求、不发 HTTP——**配了密钥也不外发**。管的是「有没有显式开闸」，
+    # 不看端点地址：内网端点（#101）同样要显式开闸。闸门实现在 adapters/cloud_gate.py。
+    allow_cloud: bool = False
+
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-4.1-mini"

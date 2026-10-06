@@ -28,7 +28,7 @@ docparse/
 |---|---|---|---|
 | 接入与安全检查 | `pipeline/steps/ingest.py` | 骨架：大小 / 空文件 | 补 MIME、真实类型 |
 | 安全解压 | `adapters/parsers/unpack.py` + `steps/unpack.py` | 骨架：zip 穿越 / 层数 / 体积 | rar/7z、加密包 |
-| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 接入 / #110 选型），纯内网，引擎不可用只告警不崩；云端 TextIn 保留，须显式选 `DOCPARSE_OCR_ENGINE=textin` | zip 拼单 |
+| 按文件类型解析 | `adapters/parsers/` | 文本可用；Excel 全 sheet + 框表/冒号/双行表头/KV/值域（#9 #15 #29）；PDF 文字层带 bbox / 无文字层渲染→OCR、图片同入口（#22）；OCR 字块重建伪格子（#62）；伪 sheet 接同一套抽取 / 组装 / 校验（#23）。xlsx / 文字层 PDF 全程不出网；扫描页默认走**本地引擎**（PaddleOCR PP-OCRv6 small + doc-ori，#99 接入 / #110 选型），纯内网，引擎不可用只告警不崩；云端 TextIn 保留，须显式选 `DOCPARSE_OCR_ENGINE=textin` **且**显式开闸 `DOCPARSE_ALLOW_CLOUD=true`（#100 硬闸，见 `adapters/cloud_gate.py`） | zip 拼单 |
 | 统一文档 IR | `domain/ir.py` | Cell 含合并/边框/公式；Sheet 含 key_values / tables / role | 非必要不改契约名 |
 | 文档分类 | `extraction/classify.py` + `sheet_role.py` | 文件类型仍占位；sheet 角色看标题/KV/表头（#16） | 新角色加 YAML |
 | 字段抽取 | `extraction/head_map.py` + `goods_map.py` + `assemble.py` + `fields.py` | 单 sheet BOX/KV → 表头（#17）；TABLE → 货行并跨表补空（#18）；多摊收成一张报关单（#19）；伪 sheet 同路径（#23：境外发货人锚点、框表标签 fold_key、多页表头取前、同角色货表接续）；旧锚点仍给无 sheet 的文本 | zip 拼单 |
@@ -39,7 +39,8 @@ docparse/
 | 合单信封 | `api/export_dec.py` + `POST /v1/declare` | Demo `{code,msg,result,dec_results}`（#86）；有单就交 | 新常量 / 别名改 YAML |
 | 对眼页 | `api/static/review.html` + `GET /v1/schema` | 只画报关单 + reviews（#44） | 不渲染 IR |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
-| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式配置则跳过。本地端点 #101、离线开关 #100 | 换供应商 / 换本地引擎只改这里 |
+| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式启用 `DOCPARSE_ALLOW_CLOUD` 则连 payload 都不构造（#100 硬闸）。本地端点 #101 | 换供应商 / 换本地引擎只改这里 |
+| 云端外呼闸门 | `adapters/cloud_gate.py` | 生产侧策略闸（#100）：只看开关不看地址，云 OCR / 云 LLM 都过它；评测台的 #108 隐私闸另在 `benchmarks/ocr/run.py` | 新增出网点在发请求前调一次 |
 
 模型链路分层与云选型（**历史对照**，成稿于「只走云 API」时期）见 [model-survey.md](model-survey.md)（#1）。本地引擎候选、方向分类与本地 LLM 端点见 [local-models-survey.md](local-models-survey.md)（#96）。本地化约束与实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)：#96 调研 → #97 评测 → #99 接协议 / #100 离线开关 / #101 本地 LLM → #102 交付。
 
