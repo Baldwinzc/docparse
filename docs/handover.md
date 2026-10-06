@@ -61,8 +61,10 @@ CLI 打印的是对眼形状（字段上是名称，带 `_meta`），不是合�
 | `DOCPARSE_ALLOW_CLOUD` | **要外呼就必须设 `true`**（云 OCR 或云 LLM 任一） | 保持 `false`（默认）时两个云 client 都不发 HTTP，只登记告警、文档进 `needs_review`；xlsx / 文字层 PDF / 本地 OCR 不受影响 |
 | `DOCPARSE_TEXTIN_APP_ID` | 扫描件 PDF、jpg/png 要**走云**时（本地引擎 #99 已默认接管，一般不必） | 流水线不崩、**也不外呼**；该页没有文字，后续字段空、对眼页 `needs_review` |
 | `DOCPARSE_TEXTIN_SECRET_CODE` | 同上 | 同上 |
-| `DOCPARSE_LLM_API_KEY` | **本期合单不需要** | 规则抽不到的字段保持空，不调模型，**不外呼** |
-| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` | 仅配了 LLM Key 时 | 默认走 OpenAI 兼容口；本地端点（#101）改这里指向内网地址，**同样要开 `DOCPARSE_ALLOW_CLOUD`** |
+| `DOCPARSE_LLM_LOCAL_API_KEY` | **本期合单不需要** | 规则抽不到的字段保持空，不调模型，**不外呼** |
+| `DOCPARSE_LLM_ENGINE` | 要用模型时：`local`（默认，内网 vLLM / Ollama）或 `cloud` | 保持 `local`：指内网端点，**同样要开 `DOCPARSE_ALLOW_CLOUD`** 才发请求 |
+| `DOCPARSE_LLM_LOCAL_BASE_URL` / `DOCPARSE_LLM_LOCAL_MODEL` | `llm_engine=local` 时 | 默认 `http://127.0.0.1:11434/v1` + `qwen3:4b`；本地端点通常不鉴权，KEY 可留空 |
+| `DOCPARSE_LLM_BASE_URL` / `DOCPARSE_LLM_MODEL` / `DOCPARSE_LLM_API_KEY` | 仅 `llm_engine=cloud` 时 | 走云端 OpenAI 兼容口，**必须配 Key**，且仍要开 `DOCPARSE_ALLOW_CLOUD`（#101） |
 
 xlsx / 有文字层的 PDF 本来就不出网。扫描件现在**默认走本地引擎**（#99：PaddleOCR PP-OCRv6 small + doc-ori），不配 TextIn、不开闸也能跑，只是引擎/权重不可用时该页抽空、进 `needs_review`。零外呼这件事有留在仓库的自动化验证：`tests/test_offline_gate.py`（拦 httpx transport，覆盖纯 xlsx 与扫描 PDF 两条路径）。
 

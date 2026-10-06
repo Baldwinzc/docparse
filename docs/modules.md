@@ -39,7 +39,7 @@ docparse/
 | 合单信封 | `api/export_dec.py` + `POST /v1/declare` | Demo `{code,msg,result,dec_results}`（#86）；有单就交 | 新常量 / 别名改 YAML |
 | 对眼页 | `api/static/review.html` + `GET /v1/schema` | 只画报关单 + reviews（#44） | 不渲染 IR |
 | 持久化接口 | `adapters/jobs/` `adapters/files/` | 内存实现；Postgres/S3 抛未实现 | 需要跨进程时再做 |
-| 模型端点 | `adapters/llm/openai_compat.py` | 默认关；未显式启用 `DOCPARSE_ALLOW_CLOUD` 则连 payload 都不构造（#100 硬闸）。本地端点 #101 | 换供应商 / 换本地引擎只改这里 |
+| 模型端点 | `adapters/llm/openai_compat.py` | 档位 `DOCPARSE_LLM_ENGINE`（#101）：默认 `local` 指内网 vLLM / Ollama，`cloud` 走云端口且需密钥；两档共用一个硬闸——未显式启用 `DOCPARSE_ALLOW_CLOUD` 则连 payload 都不构造（#100） | 换供应商 / 换本地服务端只改 `.env`，协议不动 |
 | 云端外呼闸门 | `adapters/cloud_gate.py` | 生产侧策略闸（#100）：只看开关不看地址，云 OCR / 云 LLM 都过它；评测台的 #108 隐私闸另在 `benchmarks/ocr/run.py` | 新增出网点在发请求前调一次 |
 
 模型链路分层与云选型（**历史对照**，成稿于「只走云 API」时期）见 [model-survey.md](model-survey.md)（#1）。本地引擎候选、方向分类与本地 LLM 端点见 [local-models-survey.md](local-models-survey.md)（#96）。本地化约束与实施顺序见 [#94](https://github.com/Baldwinzc/docparse/issues/94)：#96 调研 → #97 评测 → #99 接协议 / #100 离线开关 / #101 本地 LLM → #102 交付。
