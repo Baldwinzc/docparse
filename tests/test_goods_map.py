@@ -11,7 +11,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Border, Side
 
 from docparse.adapters.parsers.excel import parse_excel
-from docparse.extraction.goods_map import map_document_goods, map_sheet_goods
+from docparse.adapters.parsers.ocr_layout import reconstruct_document
+from docparse.domain.ir import BoundingBox, DocumentIR, Page, TextBlock
+from docparse.extraction.goods_map import (
+    _claim_component,
+    _column_map,
+    _compound_components,
+    map_document_goods,
+    map_sheet_goods,
+)
 from docparse.schema.loader import load_schema
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
@@ -1098,6 +1106,126 @@ def test_compound_two_row_item_splits_joined_hs_in_code_column() -> None:
     assert second["gunit"] == "盒"
     assert second["declTotal"] == "9225.60"
     assert second["tradeCurr"] == "港币"
+
+
+def _ocr_pseudo_document() -> DocumentIR:
+    """OCR 伪格子：表头「项号」与「商品编号」被识别成一个框（半岛第 1 页形态）。
+
+    并格 → 伪表头列变成「项号商品编号」，列映射「一格一字段」、锚点长者胜，
+    `gno` 列整个消失；同一页的名称行也把 HS 与品名粘成一块、落到品名列。
+    行结构：A 名称行 / B 规格首行＋总价 / C 规格续行＋成交数量＋币制（同一 y 带）。
+    """
+
+    def block(bid: str, text: str, x0: float, y0: float, x1: float, y1: float) -> TextBlock:
+        return TextBlock(
+            block_id=bid,
+            text=text,
+            bbox=BoundingBox(x0=x0, y0=y0, x1=x1, y1=y1),
+            ocr_confidence=0.98,
+        )
+
+    blocks = [
+        block("h1", "项号商品编号", 60, 100, 140, 110),
+        block("h2", "商品名称及规格型号", 176, 100, 244, 110),
+        block("h3", "数量及单位", 342, 100, 382, 110),
+        block("h4", "单价/总价/币制", 429, 100, 483, 110),
+        block("h5", "原产国(地区)", 510, 100, 554, 110),
+        block("h6", "最终目的国(地区)", 574, 100, 635, 110),
+        block("h7", "境内目的地", 700, 100, 740, 110),
+        # 行 A：HS 与品名粘连，水平重叠最大列是品名列（列归属漂移）
+        block("a1", "1905310000示例黄油酥饼", 100, 112, 260, 122),
+        block("a2", "48千克", 344, 112, 384, 122),
+        block("a3", "66.8300", 430, 112, 484, 122),
+        block("a4", "英国", 510, 112, 554, 122),
+        block("a5", "中国", 574, 112, 635, 122),
+        block("a6", "(44536/440308)示例综保区", 700, 112, 790, 122),
+        # 行 B：规格首行 + 总价
+        block("b1", "4|3|示例成分44%，示例油脂33%，白砂", 105, 124, 300, 134),
+        block("b2", "16039.20", 430, 124, 484, 134),
+        # 行 C：规格续行 + 成交数量 + 币制（同一 y 带，几何层不并格）
+        block("c1", "糖17%，米粉6%|200克X30盒/箱", 105, 136, 300, 146),
+        block("c2", "240盒", 344, 136, 384, 146),
+        block("c3", "港币", 460, 136, 484, 146),
+    ]
+    return reconstruct_document(
+        DocumentIR(
+            document_id="pseudo",
+            file_id="pseudo",
+            filename="scan.pdf",
+            media_type="application/pdf",
+            pages=[Page(page_number=1, width=841.0, height=595.0, blocks=blocks)],
+        )
+    )
+
+
+def test_ocr_fused_header_keeps_multi_row_item_as_one() -> None:
+    """#62 伪格子：表头并格让 gno 列消失时，一个项目的多行仍要并成一件。"""
+    document = _ocr_pseudo_document()
+    sheet = document.sheets[0]
+    # 前提：OCR 并格确实让伪表头丢掉项号列（这是本用例要覆盖的失真）
+    assert sheet.tables and "项号商品编号" in sheet.tables[0].headers
+    assert not any("项号" == header for header in sheet.tables[0].headers)
+
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["codeTs"] == "1905310000"
+    assert values["gname"] == "示例黄油酥饼"
+    assert values["gmodel"] == "4|3|示例成分44%，示例油脂33%，白砂糖17%，米粉6%|200克X30盒/箱"
+    assert values["qty1"] == "48"
+    assert values["unit1"] == "千克"
+    assert values["gqty"] == "240"
+    assert values["gunit"] == "盒"
+    assert values["declPrice"] == "66.8300"
+    assert values["declTotal"] == "16039.20"
+    assert values["tradeCurr"] == "港币"
+    assert values["cusOriginCountry"] == "英国"
+    assert values["destinationCountry"] == "中国"
+    assert values["districtCode"] == "44536"
+    assert values["ciqDestCode"] == "440308"
+
+
+def test_compound_column_claims_spec_shape_for_gmodel() -> None:
+    """复合列（②-A）：`商品名称及规格型号` 一格出两字段，规格形状归 `gmodel`。"""
+    schema = load_schema()
+    headers = ["商品名称及规格型号"]
+    mapping = _column_map(headers, schema, [])
+    # 主组件仍是 gname（长短锚点决胜，行为不变）
+    assert mapping["商品名称及规格型号"].name == "gname"
+    # 被丢掉的那个组件现在留下来了
+    others = _compound_components(headers, schema)["商品名称及规格型号"]
+    assert [spec.name for spec in others] == ["gmodel"]
+
+    primary = mapping["商品名称及规格型号"]
+    assert _claim_component("示例黄油酥饼", primary, others).name == "gname"
+    assert _claim_component("4|3|示例成分44%", primary, others).name == "gmodel"
+    # 全角 ｜／％ 也算规格形状（归一化后判定）
+    assert _claim_component("4｜3｜示例成分44％", primary, others).name == "gmodel"
+
+
+def test_compound_claim_leaves_quantity_and_price_columns_alone() -> None:
+    """②-A 只接规格形状：`数量及单位` / `单价/总价/币制` 仍走原路径，行为不变。"""
+    schema = load_schema()
+    cases = {"数量及单位": "48千克", "单价/总价/币制": "66.8300"}
+    mapping = _column_map(list(cases), schema, [])
+    others = _compound_components(list(cases), schema)
+    for header, raw in cases.items():
+        claimed = _claim_component(raw, mapping[header], others.get(header, ()))
+        assert claimed.name == mapping[header].name
+
+
+def test_compound_claim_refuses_when_ambiguous() -> None:
+    """认不出或认出多个 → 仍归主组件，不猜。"""
+    schema = load_schema()
+    primary = schema.field("gname")
+    gmodel = schema.field("gmodel")
+    decl_total = schema.field("declTotal")
+    trade_curr = schema.field("tradeCurr")
+    assert primary is not None and gmodel is not None
+    # 多个组件同时命中（declTotal / tradeCurr 都吃数字）→ 不拆
+    assert _claim_component("16039.20", decl_total, (trade_curr,)).name == "declTotal"
+    # 没有一个组件命中 → 归主组件
+    assert _claim_component("示例黄油酥饼", primary, (gmodel,)).name == "gname"
 
 
 def test_name_wrap_without_spec_shape_is_dropped() -> None:

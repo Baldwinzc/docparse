@@ -21,6 +21,21 @@ _WIDTH_FOLD = str.maketrans("｜％", "|%")
 _DISTRICT_CODES = re.compile(r"^[（(]\s*(\d{4,6})\s*[／/]\s*(\d{4,6})\s*[)）]")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
+# 续行判定的身份列（#62）：项号与商品编号任一存在，才谈得上「这行有没有身份」。
+# 不含 gname —— 申报要素就落在品名列，续行同样有 gname。
+_CONTINUATION_IDENTITY = ("gno", "codeTs")
+# 复合列组件认领（②-A）。词表已能判定一个表头同时命中多个货表字段
+# （`商品名称及规格型号` = 商品名称 + 规格型号；`单价/总价/币制` = 单价 + 总价 + 币制），
+# 但列映射是「一格一字段」，多出来的组件会被静默丢掉 —— 规格型号因此没有列，
+# 规格文本只能落进 gname，看起来就像一个个商品名称。
+# 这里把多出来的组件留下，按**值形状**认领。
+#
+# ②-A 只接现有形状里能唯一区分的那一条（规格形状）；`数量及单位` / `单价/总价/币制`
+# 的其余组件仍走 `_route_leftovers` 的按形状回填，行为不变。
+# ②-B（#122）会把规则声明化到 `fields.yaml` 的 `value_rules` 并删掉这张表。
+_COMPONENT_SHAPES = {
+    "gmodel": lambda raw: _spec_like(raw, None),
+}
 # PDF 伪 sheet 名是页号（#62 reconstruct）。xlsx 草单名不是数字，不接续。
 _PAGE_SHEET_NAME = re.compile(r"^(sheet\s*\d+|\d+)$", re.IGNORECASE)
 
@@ -101,19 +116,23 @@ def _map_sheet_goods(
     mapping = _column_map(table.headers, schema, table.rows)
     if not mapping:
         return []
+    compound = _compound_components(table.headers, schema)
     score = _table_score(mapping, sheet.role, schema)
     items: list[GoodsItem] = []
     for row_index, row in enumerate(table.rows):
         if _is_total_row(row, schema, sheet, table, row_index):
             continue
-        item = _map_row(row, row_index, table, mapping, sheet, document, score)
+        item = _map_row(
+            row, row_index, table, mapping, sheet, document, schema, score,
+            compound=compound,
+        )
         if item is None:
             # 无身份列但有商品值（#84：标准报关单规格单行的 item，行C 只剩
-            # 成交数量/币制）。有项号列（海关货表）才并上一件；箱单 / 发票
-            # 无项号列，无身份行照旧丢弃。
+            # 成交数量/币制）。有身份列（海关货表）才并上一件；箱单 / 发票
+            # 无身份列，无身份行照旧丢弃。
             identityless = _map_row(
-                row, row_index, table, mapping, sheet, document, score,
-                require_identity=False,
+                row, row_index, table, mapping, sheet, document, schema, score,
+                require_identity=False, compound=compound,
             )
             if (
                 identityless is not None
@@ -136,6 +155,9 @@ def _map_sheet_goods(
 
 _VALUE_FIELDS = frozenset(
     {
+        # 规格也在内（②-A）：复合列直接认领后，只有规格的续行 payload 就是 gmodel，
+        # 不认它这条续行会被当"空行"丢掉（行B/行C 的规格因此消失）。
+        "gmodel",
         "gqty",
         "gunit",
         "qty1",
@@ -217,6 +239,62 @@ def _column_map(
     return {header: spec for _, _, _, header, spec in field_best.values()}
 
 
+def _compound_components(
+    headers: list[str],
+    schema: Schema,
+) -> dict[str, tuple[FieldSpec, ...]]:
+    """表头 → 除主组件外、该表头同时命中的其它货表字段（按锚点先后）。
+
+    主组件就是 `_column_map` 会选中的那个，所以非复合列拿不到条目、行为不变。
+    只有真的并列命中 ≥2 个字段（如 `商品名称及规格型号`）才登记其余组件。
+    """
+    components: dict[str, tuple[FieldSpec, ...]] = {}
+    for header in headers:
+        if not header.strip():
+            continue
+        best: dict[str, tuple[tuple[int, int], FieldSpec]] = {}
+        for spec in schema.goods:
+            if not _mappable(spec):
+                continue
+            for order, anchor in enumerate(spec.anchors):
+                if not _anchor_hits(anchor, header):
+                    continue
+                rank = (-order, len(fold_key(anchor)))
+                current = best.get(spec.name)
+                if current is None or rank > current[0]:
+                    best[spec.name] = (rank, spec)
+        if len(best) < 2:
+            continue
+        ordered = [spec for _, (_, spec) in sorted(best.items(), key=lambda kv: kv[1][0],
+                                                   reverse=True)]
+        components[header] = tuple(ordered[1:])
+    return components
+
+
+def _claim_component(
+    raw: str,
+    primary: FieldSpec,
+    others: tuple[FieldSpec, ...],
+) -> FieldSpec:
+    """复合列：这一格的值归哪个组件字段。
+
+    主组件形状先匹配就归主组件（＝现有行为，所以 `数量及单位` / `单价/总价/币制`
+    的路径一字不变）；否则看其它组件的形状，**能唯一认出来的赢**；
+    认不出来（0 个或多个）仍归主组件 —— 不猜、不编造。
+    """
+    if not others:
+        return primary
+    if _shape_ok(primary, raw):
+        return primary
+    claimed = [spec for spec in others if _shape_ok(spec, raw)]
+    return claimed[0] if len(claimed) == 1 else primary
+
+
+def _shape_ok(spec: FieldSpec, raw: str) -> bool:
+    rule = _COMPONENT_SHAPES.get(spec.name)
+    return rule is not None and rule(raw)
+
+
 def _constant_headers(headers: list[str], rows: list[dict[str, str]]) -> frozenset[str]:
     """非空值全部相同且行数 >1 的列是合计列。空值不参与判定。"""
     constant: set[str] = set()
@@ -247,26 +325,26 @@ def _map_row(
     mapping: dict[str, FieldSpec],
     sheet: Sheet,
     document: DocumentIR,
+    schema: Schema,
     score: int,
     require_identity: bool = True,
+    compound: dict[str, tuple[FieldSpec, ...]] | None = None,
 ) -> GoodsItem | None:
+    others_by_header = compound or {}
     fields: dict[str, ExtractedField] = {}
     for header, spec in mapping.items():
         raw = (row.get(header) or "").strip()
         if not raw:
             continue
         cell = _body_cell(table, header, row_index)
-        for field in _emit(spec, raw, header, cell, sheet, document):
+        # 复合列（②-A）：这一格可能属于该表头命中的某个其它组件（如 `gmodel`）。
+        target = _claim_component(raw, spec, others_by_header.get(header, ()))
+        for field in _emit(target, raw, header, cell, sheet, document):
             if field is not None and field.name not in fields:
                 fields[field.name] = field
     if not fields:
         return None
-    # 续行常只有 gname（申报要素落在品名列）；无身份列的行仍丢。
-    if require_identity and not any(
-        name in fields for name in ("gno", "codeTs", "gname")
-    ):
-        return None
-    return GoodsItem(
+    item = GoodsItem(
         fields=fields,
         source_role=sheet.role,
         source_sheet=sheet.name,
@@ -274,6 +352,16 @@ def _map_row(
         master_score=score,
         review_reasons=_row_reasons(fields),
     )
+    # 列归属漂移先归一（#84 的 HS+品名粘连拆分）：必须在续行判定**之前**跑。
+    # 漂移时名称行的税号是空的，不先拆出来就会被当成上一件的续行并掉
+    # （#62 伪格子比 xlsx 更容易漂）。
+    _split_joined_name(item, schema)
+    # 续行常只有 gname（申报要素落在品名列）；无身份列的行仍丢。
+    if require_identity and not any(
+        name in item.fields for name in ("gno", "codeTs", "gname")
+    ):
+        return None
+    return item
 
 
 def _emit(
@@ -496,12 +584,19 @@ def _is_continuation(
 ) -> bool:
     """无可用税号，且项号空 / 0 / 与上一件相同 → 并入上一件。
 
-    只对有项号列的海关货表生效。箱单 / 发票没有项号，相邻两行都是独立商品，
-    不能因「无 gno」互并。无主行的续行也算续行，调用方丢弃。
+    只对有**身份列**（项号 ∪ 商品编号）的海关货表生效。箱单 / 发票相邻两行
+    都是独立商品，不能因「无 gno」互并。无主行的续行也算续行，调用方丢弃。
+
+    身份列取并集（#62）：PDF 伪格子里 OCR 会把「项号」和「商品编号」并成一个
+    文本框（`项号商品编号`），而列映射是「一格一字段」、锚点长者胜——`gno` 列
+    会整个消失。只认 `gno` 会让续行合并**整体失效**，一个项目的多行被拆成多件。
+    这种并框是渲染分辨率 × 扫描件深浅的产物（`RENDER_ZOOM=2.0` 在半岛样本上稳定
+    复现，zoom ≥ 2.5 即不再并框），不是某份文件的固有版式，所以在这里按结构兜住。
+    身份列在 `_map_row` 里已先做过 HS+品名拆分（#84），这里看得到税号。
 
     项号空 / 0 才是续行。字母项号（恒信箱单 D001）是身份，不并。
     """
-    if not any(spec.name == "gno" for spec in mapping.values()):
+    if not any(spec.name in _CONTINUATION_IDENTITY for spec in mapping.values()):
         return False
     if _usable_hs(item.value_of("codeTs")):
         return False
@@ -548,12 +643,16 @@ def _merge_continuation(master: GoodsItem, other: GoodsItem) -> None:
 
 
 def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None:
-    """已占字段上的续行值：品名列续行并 gmodel；叠列数字补总价、非数字补币制/单位。"""
+    """已占字段上的续行值：品名 / 规格列续行并 gmodel；叠列数字补总价、非数字补币制/单位。"""
     for field in leftovers:
         text = (field.value or "").strip()
         if not text:
             continue
-        if field.name == "gname" and _spec_like(text, master.value_of("gmodel")):
+        # `gmodel` 也在这一支（②-A）：复合列直接认领后，第二行规格是 gmodel 的**已占值**
+        # （`gname` 那一支留给列映射仍是单字段的旧路径），同样要无缝拼接。
+        if field.name in ("gname", "gmodel") and _spec_like(
+            text, master.value_of("gmodel")
+        ):
             # 规格续行（#84）：行B/行C 的规格文本并进 gmodel；硬换行无缝拼接
             # （'白砂'+'糖17％'='白砂糖17％'）。形状看归一化文本（全角 ｜ 算）。
             existing = master.value_of("gmodel") or ""

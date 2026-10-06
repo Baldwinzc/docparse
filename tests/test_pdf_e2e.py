@@ -568,3 +568,29 @@ def test_peninsula_local_engine_key_head_fields() -> None:
     payload = job.result.declaration if job.result else None
     assert payload is not None
     _assert_peninsula_key_head(payload, job.status.value)
+    # 货表结构（#62）：一个项目占 2–3 行，必须并成 19 件。
+    # 第 1 页 OCR 把「项号」并进「商品编号」一格、单字符项号也漏检，
+    # 按结构断言，不按项号断言（缺项号走 needs_review，不编造）。
+    goods = payload.get("tdecGoodsitemsVoArr") or []
+    assert len(goods) == 19
+    assert all((item.get("codeTs") or "").isdigit() for item in goods)
+    assert all(item.get("gmodel") for item in goods)
+    assert all(item.get("gname") for item in goods)
+    assert all(item.get("tradeCurr") for item in goods)
+    assert goods[-1].get("gno") == "19"
+    first = goods[0]
+    assert first.get("codeTs") == "1905310000"
+    assert "半岛苏格兰黄油酥饼" in (first.get("gname") or "")
+    assert (first.get("gmodel") or "").startswith("4|3|")
+    assert first.get("qty1") == "48"
+    assert first.get("unit1") == "千克"
+    assert first.get("customNetWt") == "48"
+    assert first.get("gqty") == "240"
+    assert first.get("gunit") == "盒"
+    assert first.get("declPrice") == "66.8300"
+    assert first.get("declTotal") == "16039.20"
+    assert first.get("tradeCurr") == "港币"
+    assert first.get("cusOriginCountry") == "英国"
+    assert first.get("destinationCountry") == "中国"
+    assert first.get("districtCode") == "44536"
+    assert first.get("ciqDestCode") == "440308"
