@@ -12,7 +12,7 @@ pytest.importorskip("openpyxl")
 from openpyxl import Workbook
 from openpyxl.styles import Border, Side
 
-from docparse.adapters.parsers.excel import parse_excel
+from docparse.adapters.parsers.excel import _existing_cells, parse_excel
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
 REAL_HENGXIN = _DEMO / "（恒信）一般贸易草单HDX260251BLU.xlsx"
@@ -727,3 +727,66 @@ def test_real_gsrua_box_row_with_placeholders() -> None:
     assert 11 not in header_rows
     goods = next(table for table in draft.tables if table.header_row == 19)
     assert len(goods.rows) == 101
+
+
+def _styled_far_cell_workbook(*, far_style: bool) -> bytes:
+    """A1:B2 有内容；`far_style=True` 时再给 XFD100 一个「有格式、没值」的格子。
+
+    后者会把 used range 撑成 `A1:XFD100`（100 行 × 16384 列 = 163 万个位置），
+    而真实存在的格子只有 5 个。真实单据里「整行刷格式」就是这个形态。
+    """
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "总箱单"
+    sheet["A1"] = "装箱单 PACKING LIST"
+    sheet["A2"] = "毛重（千克）"
+    sheet["B2"] = 12.5
+    if far_style:
+        sheet["XFD100"].border = _thin()
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def test_used_range_is_not_trusted() -> None:
+    """used range 被「有格式的空格」撑到 XFD 时，只认真实存在的格子。"""
+    import openpyxl
+
+    raw = openpyxl.load_workbook(io.BytesIO(_styled_far_cell_workbook(far_style=True)))
+    sheet = raw["总箱单"]
+    assert sheet.dimensions == "A1:XFD100"  # 前提：used range 确实被撑大了
+    existing = list(_existing_cells(sheet))
+    # 只产出真实存在的格子，而不是 100 × 16384
+    assert 0 < len(existing) < 10
+    assert {cell.coordinate for cell in existing} == {"A1", "A2", "B2", "XFD100"}
+
+
+def test_styled_empty_far_cell_does_not_change_result() -> None:
+    """带不带那个「有格式的空格」，解析结果必须一字不差。"""
+
+    def dump(data: bytes) -> list:
+        document = parse_excel(data, file_id="x", filename="x.xlsx")
+        return [
+            (sheet.name, [(c.address, c.value) for c in sheet.cells])
+            for sheet in document.sheets
+        ]
+
+    assert dump(_styled_far_cell_workbook(far_style=False)) == dump(
+        _styled_far_cell_workbook(far_style=True)
+    )
+
+
+def test_merged_empty_origin_still_produces_cell() -> None:
+    """合并且为空的原点格仍要产出格子 —— 旧行为如此，框表判定依赖格子存在。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "总箱单"
+    sheet["A1"] = "装箱单 PACKING LIST"
+    sheet.merge_cells("A3:C3")  # 合并且为空，XML 里没有这个格子
+    buffer = io.BytesIO()
+    book.save(buffer)
+    document = parse_excel(buffer.getvalue(), file_id="m", filename="m.xlsx")
+    cells = {cell.address: cell for cell in document.sheets[0].cells}
+    assert "A3" in cells
+    assert cells["A3"].value == ""
+    assert cells["A3"].merge_range == "A3:C3"
