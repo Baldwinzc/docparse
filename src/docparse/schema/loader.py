@@ -13,6 +13,49 @@ def _fold_label(text: str) -> str:
     return fold_key(text)
 
 
+# 货表 value 认领 / 拆分用到的命名形状（#122）。判定实现在 goods_map._SHAPES；
+# 这里只做白名单，避免 YAML 写错形状名要等跑数据才炸。
+VALUE_SHAPES = frozenset(
+    {
+        "text",  # 任意非空文本（慎用：谁都能匹配）
+        "number",  # 纯数字
+        "number_unit",  # 数字 + 短单位（'48千克' / '240盒'）
+        "token",  # 纯词：无数字、≤4 字（'千克' / '盒' / '港币'）
+        "spec",  # 规格形状：归一化后含 | 或 %
+        "hs",  # 8–10 位税则号前缀
+    }
+)
+VALUE_JOINS = frozenset({"first", "concat"})
+
+
+class ValueRules(BaseModel):
+    """货表 value 的认领 / 拆分规则（#122）。
+
+    只管三件事：这个字段的值**长什么样**（`shapes`）、能不能**从一串里被切出来**
+    （`splits`）、同一字段多行怎么合（`joins`）。
+    值的**校验**仍走 `value_type` / `pattern`，两套边界见 docs/goods-map.md。
+
+    形状名只是白名单，判定实现在 `extraction/goods_map.py` 的 `_SHAPES` 注册表里；
+    新增字段 / 新复合列只改 YAML，新增**形状**才动 Python。
+    """
+
+    # 空 = 不做正向形状判断（只能当主组件或由续行回填）。默认空，避免
+    # 「谁都匹配」把复合列的认领搅乱。
+    shapes: list[str] = Field(default_factory=list)
+    # 允许被切出来的形状（子串拆分，如 '5.12千克' → '5.12' + '千克'）。空 = 不参与拆分。
+    splits: list[str] = Field(default_factory=list)
+    joins: str = "first"
+
+    @model_validator(mode="after")
+    def check_rules(self) -> "ValueRules":
+        unknown = [name for name in [*self.shapes, *self.splits] if name not in VALUE_SHAPES]
+        if unknown:
+            raise ValueError(f"unknown value shape: {unknown}")
+        if self.joins not in VALUE_JOINS:
+            raise ValueError(f"unknown value joins: {self.joins}")
+        return self
+
+
 class FieldSpec(BaseModel):
     name: str
     display_name: str
@@ -38,6 +81,8 @@ class FieldSpec(BaseModel):
     # leading_hs=取列值前缀税则号；raw_review=原文 + needs_review。
     goods_map: str = "keep"
     default: str | None = None
+    # 货表 value 认领 / 拆分（#122）。复合列的值该落到哪个字段由它决定。
+    value_rules: ValueRules = Field(default_factory=ValueRules)
 
     @model_validator(mode="after")
     def check_maps(self) -> "FieldSpec":

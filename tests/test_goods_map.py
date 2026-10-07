@@ -14,13 +14,14 @@ from docparse.adapters.parsers.excel import parse_excel
 from docparse.adapters.parsers.ocr_layout import reconstruct_document
 from docparse.domain.ir import BoundingBox, DocumentIR, Page, TextBlock
 from docparse.extraction.goods_map import (
-    _claim_component,
+    _claims,
     _column_map,
     _compound_components,
+    _ordered_components,
     map_document_goods,
     map_sheet_goods,
 )
-from docparse.schema.loader import load_schema
+from docparse.schema.loader import FieldSpec, ValueRules, load_schema
 
 _DEMO = Path("/Users/baldwin/Desktop/taizhou/AI识别Demo")
 _SUPPLY = Path("/Users/baldwin/Desktop/taizhou/补充测试")
@@ -1185,47 +1186,135 @@ def test_ocr_fused_header_keeps_multi_row_item_as_one() -> None:
     assert values["ciqDestCode"] == "440308"
 
 
+def _claimed_names(header: str, raw: str, schema=None) -> list[tuple[str, str]]:
+    """走一遍「复合列认领」：[(_column_map 的主组件, 该表头全部组件, 值)] → [(字段, 片段)]。"""
+    schema = schema or load_schema()
+    primary = _column_map([header], schema, [])[header]
+    specs = _ordered_components(header, primary, _compound_components([header], schema))
+    return [(spec.name, piece) for spec, piece in _claims(raw, specs)]
+
+
 def test_compound_column_claims_spec_shape_for_gmodel() -> None:
-    """复合列（②-A）：`商品名称及规格型号` 一格出两字段，规格形状归 `gmodel`。"""
+    """复合列：`商品名称及规格型号` 一格出两字段，规格形状归 `gmodel`。"""
     schema = load_schema()
-    headers = ["商品名称及规格型号"]
-    mapping = _column_map(headers, schema, [])
+    header = "商品名称及规格型号"
+    primary = _column_map([header], schema, [])[header]
     # 主组件仍是 gname（长短锚点决胜，行为不变）
-    assert mapping["商品名称及规格型号"].name == "gname"
-    # 被丢掉的那个组件现在留下来了
-    others = _compound_components(headers, schema)["商品名称及规格型号"]
-    assert [spec.name for spec in others] == ["gmodel"]
+    assert primary.name == "gname"
+    # 命中的全部组件按「别名在表头里出现的次序」排
+    group = _compound_components([header], schema)[header]
+    assert [spec.name for spec in group] == ["gname", "gmodel"]
 
-    primary = mapping["商品名称及规格型号"]
-    assert _claim_component("示例黄油酥饼", primary, others).name == "gname"
-    assert _claim_component("4|3|示例成分44%", primary, others).name == "gmodel"
+    assert _claimed_names(header, "示例黄油酥饼") == [("gname", "示例黄油酥饼")]
+    assert _claimed_names(header, "4|3|示例成分44%") == [("gmodel", "4|3|示例成分44%")]
     # 全角 ｜／％ 也算规格形状（归一化后判定）
-    assert _claim_component("4｜3｜示例成分44％", primary, others).name == "gmodel"
+    assert _claimed_names(header, "4｜3｜示例成分44％") == [("gmodel", "4｜3｜示例成分44％")]
 
 
-def test_compound_claim_leaves_quantity_and_price_columns_alone() -> None:
-    """②-A 只接规格形状：`数量及单位` / `单价/总价/币制` 仍走原路径，行为不变。"""
+def test_component_order_follows_header_text() -> None:
+    """组件次序＝别名在表头里的出现次序（认领的顺序兜底依据）。"""
     schema = load_schema()
-    cases = {"数量及单位": "48千克", "单价/总价/币制": "66.8300"}
-    mapping = _column_map(list(cases), schema, [])
-    others = _compound_components(list(cases), schema)
-    for header, raw in cases.items():
-        claimed = _claim_component(raw, mapping[header], others.get(header, ()))
-        assert claimed.name == mapping[header].name
+    for header, expected in (
+        ("商品名称及规格型号", ["gname", "gmodel"]),
+        ("数量及单位", ["gqty", "gunit"]),
+        ("单价/总价/币制", ["declPrice", "declTotal", "tradeCurr"]),
+        ("法定数量", ["qty1", "gqty"]),
+        ("法定单位", ["unit1", "gunit"]),
+    ):
+        group = _compound_components([header], schema)[header]
+        assert [spec.name for spec in group] == expected, header
+
+
+def test_primary_wins_over_secondary_in_fused_header() -> None:
+    """`法定数量` 同时命中 qty1（主）与 gqty（次，子串「数量」）：主组件先赢。
+
+    否则 `法定数量` 的值会被 `gqty` 抢走，GSC / 通达2 的 `qty1`/`unit1` 会整列丢空。
+    """
+    assert _claimed_names("法定数量", "96") == [("qty1", "96")]
+    assert _claimed_names("第一法定数量", "2.7") == [("qty1", "2.7")]
+    assert _claimed_names("法定单位", "个") == [("unit1", "个")]
+    assert _claimed_names("第一法定单位", "千克") == [("unit1", "千克")]
+
+
+def test_new_compound_column_needs_no_code() -> None:
+    """可扩展性：新增一类复合列只给字段加 `anchors` + `value_rules`，机制不用改代码。"""
+    base = load_schema()
+    length = FieldSpec(
+        name="packLength",
+        display_name="包装长度",
+        group="goods",
+        layout="table_col",
+        anchors=["长"],
+        value_rules=ValueRules(shapes=["number"]),
+    )
+    width = FieldSpec(
+        name="packWidth",
+        display_name="包装宽度",
+        group="goods",
+        layout="table_col",
+        anchors=["宽"],
+        value_rules=ValueRules(shapes=["number"]),
+    )
+    schema = base.model_copy(update={"goods": [*base.goods, length, width]})
+    header = "长/宽"
+    primary = _column_map([header], schema, [])[header]
+    assert primary.name == "packLength"
+    assert [s.name for s in _compound_components([header], schema)[header]] == [
+        "packLength",
+        "packWidth",
+    ]
+    specs = _ordered_components(header, primary, _compound_components([header], schema))
+    # 一个值只认领一次（先长度）；宽度靠续行、由顺序兜底补上
+    assert [(s.name, v) for s, v in _claims("120", specs)] == [("packLength", "120")]
 
 
 def test_compound_claim_refuses_when_ambiguous() -> None:
-    """认不出或认出多个 → 仍归主组件，不猜。"""
+    """认出多个 → 顺序兜底归最靠前的组件；一个都不认 → 归主组件。"""
+    # declPrice / declTotal 都吃数字 → 主组件 declPrice 先赢
+    assert _claimed_names("单价/总价/币制", "66.8300") == [("declPrice", "66.8300")]
+    # 名称整体不合任何组件的形状，也拆不出来 → 归主组件 gname
+    assert _claimed_names("商品名称及规格型号", "示例黄油酥饼") == [
+        ("gname", "示例黄油酥饼")
+    ]
+
+
+def test_compound_split_carves_number_and_unit() -> None:
+    """子串拆分：`5.12千克` 整体不合任何组件，切一刀 → 数量 `5.12` + 单位 `千克`。
+
+    这正是 issue 里举的例子；靠 `value_rules.splits` 显式开启。
+    """
     schema = load_schema()
-    primary = schema.field("gname")
-    gmodel = schema.field("gmodel")
-    decl_total = schema.field("declTotal")
-    trade_curr = schema.field("tradeCurr")
-    assert primary is not None and gmodel is not None
-    # 多个组件同时命中（declTotal / tradeCurr 都吃数字）→ 不拆
-    assert _claim_component("16039.20", decl_total, (trade_curr,)).name == "declTotal"
-    # 没有一个组件命中 → 归主组件
-    assert _claim_component("示例黄油酥饼", primary, (gmodel,)).name == "gname"
+    gqty = schema.field("gqty").model_copy(deep=True)
+    gunit = schema.field("gunit").model_copy(deep=True)
+    # 只认「纯数字」/「纯单位词」，于是 '5.12千克' 必须靠拆分
+    gqty.value_rules = gqty.value_rules.model_copy(
+        update={"shapes": ["number"], "splits": ["number"]}
+    )
+    gunit.value_rules = gunit.value_rules.model_copy(
+        update={"shapes": ["token"], "splits": ["token"]}
+    )
+    assert [(s.name, piece) for s, piece in _claims("5.12千克", [gqty, gunit])] == [
+        ("gqty", "5.12"),
+        ("gunit", "千克"),
+    ]
+    # 没声明 splits 就绝不拆：整值归主组件
+    plain = gqty.model_copy(deep=True)
+    plain.value_rules = ValueRules(shapes=["number"])
+    assert [(s.name, piece) for s, piece in _claims("5.12千克", [plain, gunit])] == [
+        ("gqty", "5.12千克")
+    ]
+
+
+
+
+def test_unknown_shape_name_is_rejected() -> None:
+    """形状名写错要在加载期就炸，而不是等跑数据。"""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ValueRules(shapes=["no_such_shape"])
+    with pytest.raises(ValidationError):
+        ValueRules(joins="no_such_join")
 
 
 def test_name_wrap_without_spec_shape_is_dropped() -> None:
