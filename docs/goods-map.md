@@ -54,30 +54,69 @@ Sheet.tables + consume
 
 同一字段多列命中时才看数据形状：**常量列降级**——行数 >1 且非空值全部相同的列是合计列（通达2「总净重(千克)」全表 1793.6065），不抢行级列（「净重(千克)」）；国光「总净重 NW」每行不同，不受影响，仍按锚点顺序赢。
 
-## 复合列：一格出两字段（②-A / #123）
+## 复合列：一格出多字段（#123 起，规则在 #122 声明化）
 
 海关货表的列名会把**两个（或三个）字段拼在一个表头里**：
 
-| 表头 | 词表命中的组件（`_anchor_hits`） | 列映射保留 | 其余组件 |
-|---|---|---|---|
-| `商品名称及规格型号` | `gname` + `gmodel` | `gname` | **`gmodel`** |
-| `数量及单位` | `gqty` + `gunit` | `gqty` | `gunit` |
-| `单价/总价/币制` | `declPrice` + `declTotal` + `tradeCurr` | `declPrice` | `declTotal`、`tradeCurr` |
+| 表头 | 组件（按别名在表头里的出现次序） |
+|---|---|
+| `商品名称及规格型号` | `gname` → `gmodel` |
+| `数量及单位` | `gqty` → `gunit` |
+| `单价/总价/币制` | `declPrice` → `declTotal` → `tradeCurr` |
+| `法定数量` / `第一法定数量` | `qty1` → `gqty`（`gqty` 靠子串「数量」命中） |
+| `法定单位` / `第一法定单位` | `unit1` → `gunit` |
 
-列映射是「一格一字段」（长短锚点决胜），**多出来的组件原先被静默丢掉**。`gmodel` 被丢的后果最重：规格型号没有列，规格文本只能落进 `gname`，而 `gname` 算行身份 → **每一行规格看起来都是一个商品名称**。
+列映射 `_column_map` 是「一格一字段」（长短锚点决胜），其余组件原先被静默丢掉。`gmodel` 被丢的后果最重：规格型号没有列，规格文本只能落进 `gname`，而 `gname` 算行身份 → **每一行规格看起来都是一个商品名称**。
 
-现在把多出来的组件留下（`_compound_components`），`_map_row` 对每格做一次**认领**（`_claim_component`）：
+`_compound_components` 把该表头命中的**全部**组件按「别名在表头里先出现在哪」排好留下，`_map_row` 对每格做一次**认领**（`_claims`）：
 
-1. 主组件形状先匹配 → 归主组件（＝原行为，所以 `数量及单位` / `单价/总价/币制` 的路径一字不变）；
-2. 否则看其余组件的形状，**能唯一认出来的赢**（如规格形状 `\|` / `%` → `gmodel`）；
-3. 认不出或认出多个 → 仍归主组件，**不猜、不编造**。
+1. **主组件形状先匹配 → 归主组件**。这一步不能省：`法定数量` 同时命中 `qty1`（主）与 `gqty`（次，子串「数量」），让次组件先认领会把 `法定数量` 的值抢走（GSC / 通达2 实测会整列丢 `qty1`/`unit1`）；
+2. 否则看其余组件，**能唯一认出来的赢**（如规格形状 → `gmodel`）；
+3. 一个都认不出 → 试**子串拆分**（`5.12千克` → 数量 + 单位，见下）；
+4. 还是不行 → 整值归主组件，**不猜、不编造**。
+
+越界溢出的续行值（`_route_leftovers`）同样按声明走：`_next_component` 在该表头的组件序列里找「`name` 之后、形状匹配、且主件还没占」的下一个组件 —— 原先按字段名写死的 `declPrice → 总价 / 币制`、`gqty → 单位` 三支就是这样被替掉的。
+
+### value 规则声明在哪（#122）
+
+`fields.yaml` 每个货表字段可以带 `value_rules`：
+
+```yaml
+  - name: gmodel
+    value_rules: {shapes: [spec], joins: concat}
+  - name: gqty
+    value_rules: {shapes: [number, number_unit]}
+  - name: gunit
+    value_rules: {shapes: [token, number_unit]}
+```
+
+| 键 | 含义 |
+|---|---|
+| `shapes` | 这个字段的值**长什么样**（正向判断）。**空 = 不做正向判断**（只能当主组件或由续行回填）——默认空，避免「谁都匹配」把认领搅乱 |
+| `splits` | 允许**从一串里被切出来**的形状（子串拆分）。**空 = 不参与拆分** |
+| `joins` | 同字段多值怎么合：`first`（默认，只取一个） / `concat`（拼接，规格用） |
+
+命名形状（判定实现在 `goods_map._SHAPES`，白名单在 `loader.VALUE_SHAPES`）：
+
+| 形状 | 判定 |
+|---|---|
+| `number` | 纯数字 |
+| `number_unit` | 数字 + 短单位（`48千克` / `240盒`） |
+| `token` | 纯词：无数字、≤4 字（`千克` / `盒` / `港币`） |
+| `spec` | 规格形状：归一化（全角 `｜％`）后含 `\|` 或 `%` |
+| `hs` | 8–10 位税则号前缀 |
+| `text` | 任意非空文本（慎用：谁都能匹配） |
+
+**子串拆分**（`_split_by_shapes`）：整串没有任何组件匹配时，找一个切点让前缀 / 后缀各自命中**不同**组件、且两侧各只命中一个；否则不拆。例：`gqty` 只声明 `shapes: [number]` + `splits: [number]`、`gunit` 只声明 `shapes: [token]` + `splits: [token]` 时，`5.12千克` → `gqty=5.12` + `gunit=千克`。**没声明 `splits` 就绝不拆。**
+
+> **边界**：`value_rules` 只管**认领 / 拆分**；值的**校验**仍走 `value_type` / `pattern`（`extraction/fields.py`、`validate.py`）。两套不要互相替代。
+>
+> **注**：半岛样本的 `数量及单位` 目前**没有**开拆分（`gqty` 的 `shapes` 含 `number_unit`，`splits` 为空）—— 那一列的法定 / 成交语义由 `_split_stacked_qty` 按重量单位判定（业务规则，见下节）。要让 `48千克` 在那一列也先拆成 `数量 + 单位`，得连法定/成交那条业务规则一起改，属另一件事。
 
 配套两处：
 
 - `_VALUE_FIELDS` 收 `gmodel` —— 直接认领后，只有规格的续行 payload 就是 `gmodel`，不收它这条续行会被当空行丢掉；
 - `_route_leftovers` 的规格拼接分支同时认 `gname` 与 `gmodel` —— 第二行规格是 `gmodel` 的**已占值**，仍要硬换行无缝拼接（`'白砂'`+`'糖17％'`=`'白砂糖17％'`）。
-
-> ②-A 只接「规格形状」这一条（现有形状里能唯一区分的那条）。把规则声明化、加上通用「子串认领」（`5.12千克` → 数量 + 单位）见 [#122](https://github.com/Baldwinzc/docparse/issues/122)；落地后本节的 `_COMPONENT_SHAPES` 表应删除、改读 `fields.yaml` 的 `value_rules`。
 
 ## 主货表
 
@@ -179,17 +218,18 @@ PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，�
 | 哪些列要过数量闸（数量链） | `goods_master.gated_fields` | 否 |
 | 千克行数量补值须≈净重、毛重补值须≥净重 | 内置规则，容差同 `qty_*` | 否 |
 | 千克行同表成交数量取净重（#75） | 内置规则；千克词表仍是 `weight_units` | 否 |
-| 规格新形状（无 `\|` 无 `%`） | `goods_map.py` `_route_leftovers` 规格形状判定 | 是，一处 |
+| 规格新形状（无 `\|` 无 `%`） | `fields.yaml` `value_rules.shapes` 的 `spec` 判定（`goods_map._SHAPES`） | 形状名已有则否；新形状名才是 |
 | 数量单位新写法（PCS/SET） | `goods_map.py` `_split_stacked_qty` 数量正则 | 是，一处 |
 | 目的地前缀新码型 | `goods_map.py` `_split_district_codes` 正则 | 是，一处 |
 | 新的目的地/检验检疫字段 | `fields.yaml` `goods:` 新字段 | 否 |
 | 新合计叫法（如 GRAND TOTAL） | `goods_master.total_row_tokens` | 否 |
 | 同角色多页不要接续（回到按行序补空） | `goods_master.concat_same_role: false` | 否 |
-| 续行落在其它已占字段且非申报要素形状 | `goods_map.py` `_route_leftovers` 补形状判定 | 是，通用规则 |
+| 续行落在其它已占字段 | `fields.yaml` 该字段的 `value_rules.shapes` + 表头组件次序（`_next_component`） | 否 |
 | 三行以上叠列（四行一项） | 续行判定天然支持，验收补样本 | 否 |
-| 新的**复合列**（一个表头含多个字段） | `fields.yaml` 各组件字段的 `anchors` —— 词表已能判出，`_compound_components` 自动登记 | 否（认领规则见下条） |
-| 复合列要接新的**值形状**认领（除规格外） | ②-A 现状：`goods_map._COMPONENT_SHAPES`；#122 落地后：`fields.yaml` 的 `value_rules` | 现状：是，一处；#122 后：否 |
-| 还要认别的**续行身份列** | `goods_map._CONTINUATION_IDENTITY` | 是，一处 |
+| 新的**复合列**（一个表头含多个字段） | `fields.yaml` 各组件字段的 `anchors` + 各自 `value_rules.shapes` —— 词表已能判出，`_compound_components` 自动登记 | 否 |
+| 复合列要把一串**切开**（`5.12千克`） | `fields.yaml` 该字段的 `value_rules.splits` | 否 |
+| 同字段多行要拼接而不是只取一个 | `fields.yaml` `value_rules.joins: concat` | 否 |
+| 要加**新的形状名**（现有 6 个不够） | `loader.VALUE_SHAPES` 白名单 + `goods_map._SHAPES` 判定 | 是，两处 |
 | 还要认别的**身份列**（除项号 / 商品编号外） | `goods_map.py` `_CONTINUATION_IDENTITY` | 是，一处 |
 | 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
 | 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |

@@ -809,6 +809,7 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [商品编号, 项目编号, 商品编码, 海关编码, 海关十位编码, HS]
+    value_rules: {shapes: [hs]}
     goods_map: leading_hs
     split_target: gname
     notes: HS 编码。列值前缀 8–10 位数字时只取编号；OCR 常把编号与品名合成一个字块（#84），余文经 split_target 发射给 gname。
@@ -827,6 +828,7 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [申报要素, 规格型号, 商品规格]
+    value_rules: {shapes: [spec], joins: concat}
     goods_map: raw_review
     notes: 原文进本字段。0|0|... 规范编码本层不编，标 needs_review。
 
@@ -845,6 +847,7 @@ goods:
     value_type: number
     sources: [customs_declaration, invoice]
     anchors: [单价, Unit Price, 申报单价]
+    value_rules: {shapes: [number]}
     notes: 海关商品表优先，发票补充。申报单价为通达2 叫法（#66）。
 
   - name: declTotal
@@ -854,6 +857,7 @@ goods:
     value_type: number
     sources: [customs_declaration, invoice]
     anchors: [总价, 汇总价, 总值, Amount, 申报总价, 金额]
+    value_rules: {shapes: [number]}
     notes: 海关商品表优先。可能是公式。申报总价为通达2 叫法；金额为 GSC 叫法（#66）。
 
   - name: tradeCurr
@@ -862,6 +866,7 @@ goods:
     layout: table_col
     sources: [customs_declaration, invoice]
     anchors: [币制, 币别, 币值]
+    value_rules: {shapes: [token]}
     code_table: 币制
     notes: 表上常是 HKD/USD 字母，转码交 #14。
 
@@ -872,6 +877,7 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
     anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty, 申报数量]
+    value_rules: {shapes: [number, number_unit]}
     notes: 海关商品表优先。别名交 #13。千克行同表有净重时成交数量取净重（#75）；跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。
 
   - name: gunit
@@ -880,6 +886,7 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [计价单位, 成交单位, 申报单位, 单位, 申报计量单位]
+    value_rules: {shapes: [token, number_unit]}
     code_table: 计量单位
     notes: 名称转码交 #14。映射层可认「单位」列；layout 词表仍不加，防框表误伤。申报计量单位为通达2 叫法（#66）。
 
@@ -890,6 +897,7 @@ goods:
     value_type: number
     sources: [customs_declaration]
     anchors: [法定第一数量, 法定数量]
+    value_rules: {shapes: [number, number_unit]}
     notes: 只认法定数量列。重量 / 重量KG / 净重不进本字段，见 customNetWt。
 
   - name: unit1
@@ -898,6 +906,7 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [法定第一计量单位, 法定单位]
+    value_rules: {shapes: [token, number_unit]}
     code_table: 计量单位
     notes: 草单常无独立列；有则抽。
 

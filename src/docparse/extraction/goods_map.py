@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from copy import deepcopy
 
 from docparse.domain.fields import ExtractedField, FieldStatus, GoodsItem
@@ -24,17 +25,22 @@ _GOODS_LAYOUTS = frozenset({"table_col"})
 # 续行判定的身份列（#62）：项号与商品编号任一存在，才谈得上「这行有没有身份」。
 # 不含 gname —— 申报要素就落在品名列，续行同样有 gname。
 _CONTINUATION_IDENTITY = ("gno", "codeTs")
-# 复合列组件认领（②-A）。词表已能判定一个表头同时命中多个货表字段
+# 复合列组件认领（#122）。词表已能判定一个表头同时命中多个货表字段
 # （`商品名称及规格型号` = 商品名称 + 规格型号；`单价/总价/币制` = 单价 + 总价 + 币制），
 # 但列映射是「一格一字段」，多出来的组件会被静默丢掉 —— 规格型号因此没有列，
 # 规格文本只能落进 gname，看起来就像一个个商品名称。
-# 这里把多出来的组件留下，按**值形状**认领。
 #
-# ②-A 只接现有形状里能唯一区分的那一条（规格形状）；`数量及单位` / `单价/总价/币制`
-# 的其余组件仍走 `_route_leftovers` 的按形状回填，行为不变。
-# ②-B（#122）会把规则声明化到 `fields.yaml` 的 `value_rules` 并删掉这张表。
-_COMPONENT_SHAPES = {
-    "gmodel": lambda raw: _spec_like(raw, None),
+# 认领规则本身**声明在 `fields.yaml` 的 `value_rules`**（字段级）；这里只放
+# 「形状名 → 判定」的注册表。新增字段 / 新复合列只改 YAML；新增**形状**才动这里。
+_SHAPES = {
+    "text": lambda raw: bool(raw.strip()),
+    "number": lambda raw: _as_number(raw) is not None,
+    "number_unit": lambda raw: _QTY_UNIT.match(raw) is not None,
+    "token": lambda raw: bool(raw.strip())
+    and len(raw.strip()) <= 4
+    and not any(ch.isdigit() for ch in raw),
+    "spec": lambda raw: _spec_like(raw, None),
+    "hs": lambda raw: _LEADING_HS.match(raw) is not None,
 }
 # PDF 伪 sheet 名是页号（#62 reconstruct）。xlsx 草单名不是数字，不接续。
 _PAGE_SHEET_NAME = re.compile(r"^(sheet\s*\d+|\d+)$", re.IGNORECASE)
@@ -140,12 +146,12 @@ def _map_sheet_goods(
                 and _is_continuation(identityless, items[-1], mapping)
                 and _has_value_fields(identityless)
             ):
-                _merge_continuation(items[-1], identityless)
+                _merge_continuation(items[-1], identityless, compound)
             continue
         if _is_continuation(item, items[-1] if items else None, mapping):
             if not items:
                 continue
-            _merge_continuation(items[-1], item)
+            _merge_continuation(items[-1], item, compound)
             continue
         items.append(item)
     for item in items:
@@ -243,56 +249,125 @@ def _compound_components(
     headers: list[str],
     schema: Schema,
 ) -> dict[str, tuple[FieldSpec, ...]]:
-    """表头 → 除主组件外、该表头同时命中的其它货表字段（按锚点先后）。
+    """表头 → 该表头同时命中的**全部**组件（含主组件），按别名在表头文本里的出现次序。
 
-    主组件就是 `_column_map` 会选中的那个，所以非复合列拿不到条目、行为不变。
-    只有真的并列命中 ≥2 个字段（如 `商品名称及规格型号`）才登记其余组件。
+    非复合列（只命中一个字段）拿不到条目，行为不变。
+
+    次序用「别名在表头里先出现在哪」而不是锚点长短，因为表头的写法本身就是这个次序：
+    `商品名称及规格型号` → [gname, gmodel]；`单价/总价/币制` → [declPrice, declTotal, tradeCurr]；
+    `数量及单位` → [gqty, gunit]。这个次序就是认领时的**顺序兜底**依据。
     """
     components: dict[str, tuple[FieldSpec, ...]] = {}
     for header in headers:
         if not header.strip():
             continue
-        best: dict[str, tuple[tuple[int, int], FieldSpec]] = {}
+        matched: dict[str, tuple[int, int, FieldSpec]] = {}
         for spec in schema.goods:
             if not _mappable(spec):
                 continue
             for order, anchor in enumerate(spec.anchors):
                 if not _anchor_hits(anchor, header):
                     continue
-                rank = (-order, len(fold_key(anchor)))
-                current = best.get(spec.name)
-                if current is None or rank > current[0]:
-                    best[spec.name] = (rank, spec)
-        if len(best) < 2:
+                at = header.find(anchor)
+                rank = (at if at >= 0 else len(header), -order)
+                current = matched.get(spec.name)
+                if current is None or rank < (current[0], current[1]):
+                    matched[spec.name] = (rank[0], rank[1], spec)
+        if len(matched) < 2:
             continue
-        ordered = [spec for _, (_, spec) in sorted(best.items(), key=lambda kv: kv[1][0],
-                                                   reverse=True)]
-        components[header] = tuple(ordered[1:])
+        components[header] = tuple(
+            spec for _, _, spec in sorted(matched.values(), key=lambda item: (item[0], item[1]))
+        )
     return components
 
 
-def _claim_component(
-    raw: str,
-    primary: FieldSpec,
-    others: tuple[FieldSpec, ...],
-) -> FieldSpec:
-    """复合列：这一格的值归哪个组件字段。
+def _matches_shape(spec: FieldSpec, raw: str) -> bool:
+    """该字段的声明形状能不能接受这个值（`value_rules.shapes`）。"""
+    return any(_SHAPES[name](raw) for name in spec.value_rules.shapes)
 
-    主组件形状先匹配就归主组件（＝现有行为，所以 `数量及单位` / `单价/总价/币制`
-    的路径一字不变）；否则看其它组件的形状，**能唯一认出来的赢**；
-    认不出来（0 个或多个）仍归主组件 —— 不猜、不编造。
+
+def _can_split_out(spec: FieldSpec, piece: str) -> bool:
+    """这个片段能不能**从一串里被切出来**给该字段（`value_rules.splits`）。"""
+    return any(_SHAPES[name](piece) for name in spec.value_rules.splits)
+
+
+def _claims(raw: str, specs: Sequence[FieldSpec]) -> list[tuple[FieldSpec, str]]:
+    """复合列：这一格的值认领给哪些组件。
+
+    `specs` 已按「主组件在前、其余按表头出现次序」排好。规则：
+
+    1. **主组件形状先匹配就归主组件** —— 这一步不能省：`法定数量` 的表头同时命中
+       `qty1`（主）与 `gqty`（次，靠子串「数量」），若让次组件先认领，`法定数量` 的值
+       会被 `gqty` 抢走（GSC / 通达2 实测会丢 `qty1`/`unit1`）；
+    2. 否则看其余组件，**能唯一认出来的赢**（如规格形状 → `gmodel`）；
+    3. 一个都认不出 → 试**子串拆分**（`5.12千克` → 数量 + 单位）；
+    4. 还是不行 → 整值归主组件，**不猜、不编造**。
     """
-    if not others:
-        return primary
-    if _shape_ok(primary, raw):
-        return primary
-    claimed = [spec for spec in others if _shape_ok(spec, raw)]
-    return claimed[0] if len(claimed) == 1 else primary
+    primary = specs[0]
+    if _matches_shape(primary, raw):
+        return [(primary, raw)]
+    claimed = [spec for spec in specs[1:] if _matches_shape(spec, raw)]
+    if len(claimed) == 1:
+        return [(claimed[0], raw)]
+    split = _split_by_shapes(raw, specs)
+    if split is not None:
+        return split
+    return [(primary, raw)]
 
 
-def _shape_ok(spec: FieldSpec, raw: str) -> bool:
-    rule = _COMPONENT_SHAPES.get(spec.name)
-    return rule is not None and rule(raw)
+def _split_by_shapes(
+    raw: str,
+    specs: Sequence[FieldSpec],
+) -> list[tuple[FieldSpec, str]] | None:
+    """子串拆分：找一个切点，让前缀 / 后缀各自命中**不同**的组件（且各只命中一个）。
+
+    只切一刀，且两侧都必须由声明了 `splits` 的字段认领；任何一侧 0 命中或 >1 命中
+    都放弃 —— 宁可 `needs_review`，也不瞎配。
+    """
+    text = raw.strip()
+    for cut in range(1, len(text)):
+        left, right = text[:cut].strip(), text[cut:].strip()
+        if not left or not right:
+            continue
+        left_hits = [spec for spec in specs if _can_split_out(spec, left)]
+        right_hits = [spec for spec in specs if _can_split_out(spec, right)]
+        if len(left_hits) == 1 and len(right_hits) == 1 and left_hits[0] is not right_hits[0]:
+            return [(left_hits[0], left), (right_hits[0], right)]
+    return None
+
+
+def _ordered_components(
+    header: str,
+    primary: FieldSpec,
+    compound: dict[str, tuple[FieldSpec, ...]],
+) -> list[FieldSpec]:
+    """主组件在前、其余按表头出现次序 —— 认领与顺序兜底都用这个序列。"""
+    group = compound.get(header, ())
+    return [primary, *(spec for spec in group if spec.name != primary.name)]
+
+
+def _next_component(
+    name: str,
+    text: str,
+    master: GoodsItem,
+    compound: dict[str, tuple[FieldSpec, ...]],
+) -> FieldSpec | None:
+    """续行溢出：同列里「`name` 之后、形状能接受这个值、且主件还没占」的第一个组件。
+
+    这就是原先 `_route_leftovers` 里按字段名写死的那几支（`declPrice` → 总价 / 币制、
+    `gqty` → 单位）的**声明化**版本：顺序取自表头，形状取自 `value_rules`。
+    """
+    for group in compound.values():
+        names = [spec.name for spec in group]
+        if name not in names:
+            continue
+        for spec in group[names.index(name) + 1 :]:
+            if not _matches_shape(spec, text):
+                continue
+            if master.value_of(spec.name):
+                continue
+            return spec
+    return None
 
 
 def _constant_headers(headers: list[str], rows: list[dict[str, str]]) -> frozenset[str]:
@@ -330,18 +405,20 @@ def _map_row(
     require_identity: bool = True,
     compound: dict[str, tuple[FieldSpec, ...]] | None = None,
 ) -> GoodsItem | None:
-    others_by_header = compound or {}
+    component_group = compound or {}
     fields: dict[str, ExtractedField] = {}
     for header, spec in mapping.items():
         raw = (row.get(header) or "").strip()
         if not raw:
             continue
         cell = _body_cell(table, header, row_index)
-        # 复合列（②-A）：这一格可能属于该表头命中的某个其它组件（如 `gmodel`）。
-        target = _claim_component(raw, spec, others_by_header.get(header, ()))
-        for field in _emit(target, raw, header, cell, sheet, document):
-            if field is not None and field.name not in fields:
-                fields[field.name] = field
+        # 复合列（#122）：这一格可能归该表头命中的另一个组件（如 `gmodel`），
+        # 也可能被拆成两段分别归两个组件（`5.12千克` → 数量 + 单位）。
+        specs = _ordered_components(header, spec, component_group)
+        for target, piece in _claims(raw, specs):
+            for field in _emit(target, piece, header, cell, sheet, document):
+                if field is not None and field.name not in fields:
+                    fields[field.name] = field
     if not fields:
         return None
     item = GoodsItem(
@@ -630,7 +707,11 @@ def _item_no(text: str | None) -> int | None:
     return int(number)
 
 
-def _merge_continuation(master: GoodsItem, other: GoodsItem) -> None:
+def _merge_continuation(
+    master: GoodsItem,
+    other: GoodsItem,
+    compound: dict[str, tuple[FieldSpec, ...]] | None = None,
+) -> None:
     """同名字段主行空位补、已占用不覆盖；叠列溢出按形状改落到空字段。"""
     leftovers: list[ExtractedField] = []
     for name, field in other.fields.items():
@@ -638,17 +719,25 @@ def _merge_continuation(master: GoodsItem, other: GoodsItem) -> None:
             master.fields[name] = deepcopy(field)
         else:
             leftovers.append(field)
-    _route_leftovers(master, leftovers)
+    _route_leftovers(master, leftovers, compound)
     master.review_reasons = _row_reasons(master.fields)
 
 
-def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None:
-    """已占字段上的续行值：品名 / 规格列续行并 gmodel；叠列数字补总价、非数字补币制/单位。"""
+def _route_leftovers(
+    master: GoodsItem,
+    leftovers: list[ExtractedField],
+    compound: dict[str, tuple[FieldSpec, ...]] | None = None,
+) -> None:
+    """已占字段上的续行值：品名 / 规格列续行并 gmodel；叠列溢出顺延到同列下一个组件。
+
+    「顺延到哪个组件」不再按字段名写死，而是 `_next_component` 读
+    `fields.yaml` 的 `value_rules`（形状）+ 表头次序。
+    """
     for field in leftovers:
         text = (field.value or "").strip()
         if not text:
             continue
-        # `gmodel` 也在这一支（②-A）：复合列直接认领后，第二行规格是 gmodel 的**已占值**
+        # `gmodel` 也在这一支：复合列直接认领后，第二行规格是 gmodel 的**已占值**
         # （`gname` 那一支留给列映射仍是单字段的旧路径），同样要无缝拼接。
         if field.name in ("gname", "gmodel") and _spec_like(
             text, master.value_of("gmodel")
@@ -661,13 +750,9 @@ def _route_leftovers(master: GoodsItem, leftovers: list[ExtractedField]) -> None
             merged.normalized_value = existing + text
             master.fields["gmodel"] = merged
             continue
-        if field.name == "declPrice":
-            if _as_number(text) is not None and not master.value_of("declTotal"):
-                master.fields["declTotal"] = _retarget(field, "declTotal", "申报总价")
-            elif _as_number(text) is None and not master.value_of("tradeCurr"):
-                master.fields["tradeCurr"] = _retarget(field, "tradeCurr", "币制")
-        elif field.name == "gqty" and _as_number(text) is None and not master.value_of("gunit"):
-            master.fields["gunit"] = _retarget(field, "gunit", "成交单位")
+        target = _next_component(field.name, text, master, compound or {})
+        if target is not None:
+            master.fields[target.name] = _retarget(field, target.name, target.display_name)
 
 
 def _spec_like(text: str, existing_gmodel: str | None) -> bool:
