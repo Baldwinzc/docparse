@@ -160,6 +160,25 @@ def _finish_document(
     return document
 
 
+def _existing_cells(sheet):
+    """按行序产出**真实存在**的格子，不按 used range 空转。
+
+    openpyxl 的 used range（`sheet.dimensions`）**不可信**：整行 / 大范围刷过格式
+    就能把它撑到最后一列（XFD＝16384 列），`iter_rows()` 于是空转上百万次、并逐个
+    实例化空 `Cell` 留在内存里 —— 实测一份 122 KB 的草单因此从 0.2 s 涨到 3 s，
+    同类文件（只多一个「有格式的空格」）在真机上从 0.18 s 涨到 27 s。
+
+    `sheet._cells` 恰好只含「XML 里真实存在的格子」（有值或有格式），语义正合适；
+    拿不到这个内部结构（如 read-only 模式）时退回 `iter_rows()`。
+    """
+    existing = getattr(sheet, "_cells", None)
+    if not existing:
+        for row in sheet.iter_rows():
+            yield from row
+        return
+    yield from existing.values()
+
+
 def _read_sheet(raw_sheet, value_sheet) -> tuple[Sheet, dict[str, str], list[Cell]]:
     merges = _merge_origins(raw_sheet)
     covered = _covered_cells(raw_sheet)
@@ -167,35 +186,41 @@ def _read_sheet(raw_sheet, value_sheet) -> tuple[Sheet, dict[str, str], list[Cel
     grid: dict[str, str] = {}
     formulas: list[Cell] = []
 
-    for row in raw_sheet.iter_rows():
-        for item in row:
-            address = item.coordinate
-            if address in covered and address not in merges:
-                continue
-            cached = None
-            if value_sheet is not None:
-                cached = value_sheet[address].value
-            raw = item.value
-            formula = raw if isinstance(raw, str) and raw.startswith("=") else None
-            fallback = None if formula else raw
-            display = _stringify(cached if cached is not None else fallback)
-            if not display and not formula and address not in merges:
-                continue
-            cell = Cell(
-                address=address,
-                value=display,
-                raw_value=formula or _stringify(item.value) or None,
-                row=item.row,
-                column=item.column,
-                merge_range=merges.get(address),
-                formula=formula,
-                border=_border(item),
-            )
-            cells.append(cell)
-            if display:
-                grid[address] = display
-            if formula and not display:
-                formulas.append(cell)
+    # 只认真实存在的格子；「合并且为空」的原点格在 XML 里可能并不存在，旧行为会为它
+    # 产出一个空格子（框表判定依赖格子存在），所以显式补进来。最后统一按行序处理，
+    # 与旧 `iter_rows()` 的产出顺序一字不差。
+    items: dict[str, object] = {item.coordinate: item for item in _existing_cells(raw_sheet)}
+    for address in merges:
+        items.setdefault(address, raw_sheet[address])
+
+    for item in sorted(items.values(), key=lambda cell: (cell.row, cell.column)):
+        address = item.coordinate
+        if address in covered and address not in merges:
+            continue
+        cached = None
+        if value_sheet is not None:
+            cached = value_sheet[address].value
+        raw = item.value
+        formula = raw if isinstance(raw, str) and raw.startswith("=") else None
+        fallback = None if formula else raw
+        display = _stringify(cached if cached is not None else fallback)
+        if not display and not formula and address not in merges:
+            continue
+        cell = Cell(
+            address=address,
+            value=display,
+            raw_value=formula or _stringify(item.value) or None,
+            row=item.row,
+            column=item.column,
+            merge_range=merges.get(address),
+            formula=formula,
+            border=_border(item),
+        )
+        cells.append(cell)
+        if display:
+            grid[address] = display
+        if formula and not display:
+            formulas.append(cell)
 
     return Sheet(name=raw_sheet.title, cells=cells), grid, formulas
 

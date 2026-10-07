@@ -62,6 +62,8 @@ docparse/
 
 Excel 框表拆分（#9 / #15 / #29）：`adapters/parsers/layout.py` 从格子拆 `key_values` / `tables`，还不映射报关字段。词表在 `schema/layout_vocab.yaml`（#13）：BOX 框表标签、KV 商业单据键、TABLE 表头词。`layout.py` 读文件不再维护 Python 常量。刀法：冒号变体、日期时间不切、双行表头并入 `headers`（`header_rows` 可多行）。多候选先按 id 上的 `value:` 滤形状，再按 `same_cell` > `below` > `right` 决胜。新 xlsx 往哪加见 #31。本地对眼用 `python -m docparse.cli layout file.xlsx`。
 
+**Excel 只认「真实存在的格子」**（#128）：openpyxl 的 used range（`ws.dimensions`）不可信 —— 整行 / 大范围刷过格式就能把它撑到 XFD（16384 列），按它 `iter_rows()` 会空转上百万次、并实例化同样多的空 `Cell`。实测一份 122 KB 草单因此从 0.2 s 涨到 3 s；只多一个「有格式的空格」的同类文件在真机上从 0.18 s 涨到 27 s。`excel.py::_read_sheet` 改为遍历 `ws._cells`（只含 XML 里真实存在的格子），并把「合并且为空」的原点格显式补回来；拿不到该内部结构时退回 `iter_rows()`。
+
 名称转 code（#14）：`schema/code_tables.yaml` 全量转录 + `load_code_tables().lookup(表, 名称)`。精确匹配，未知返回空。海关口岸（四位）与港口代码分开。xlsx 原件不入库。俗称别名交 #27。
 
 sheet 角色（#16 / #65）：`schema/sheet_roles.yaml` + `extraction/sheet_role.py`。每张 sheet 标 `draft` / `declaration_list` / `packing` / `invoice` / `contract` / `auxiliary` / `unknown`，并带 `consume`（primary / supplement / exclude）。`declaration_list` 是扁平海关表，与 draft 同权 consume=primary。辅助表和 unknown 的 KV / table 留在 IR，不进下一张报关单。新叫法加 YAML，不按公司写分支。见 [sheet-roles.md](sheet-roles.md)。
