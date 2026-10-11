@@ -161,8 +161,12 @@ PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，�
 |---|---|---|
 | 粘连品名兜底拆 | `codeTs` 空且 `gname` 以 8–10 位 HS 开头（粘块落到名称列） | 拆 `codeTs` + `gname` |
 | 法定/成交数量拆 | `gqty` 值带单位后缀（`48千克`）**且** `gunit` 值是「数字+单位」（`240盒`） | 重量单位方 → `qty1`/`unit1`（unit1 千克时同值补 `customNetWt`）；另一方 → `gqty`/`gunit`。裸数字+纯单位堆叠（当纳利）形状不符不拆 |
+| 法定/成交数量**半拆**（#131） | 上面那对**只读到一侧**（另一侧 OCR 漏读 / 格子空，字段可能压根没建） | 读到的那侧按重量单位判归属：重量 → `qty1`/`unit1`（同值补 `customNetWt`），非重量 → `gqty`/`gunit`；**另一侧清空**，并给该行加 `needs_review`（`stacked_qty_partial`） |
 | 境内目的地双码 | 值前缀 `（44536／440308）` 两码都非空 | 第一码 `districtCode`、第二码 `ciqDestCode`（新字段）；单码前缀（当纳利 `(44199/)东莞/`）保持原值 |
 | HS `split_target` | 编号列值 `1905310000半岛…`（粘块落到编号列） | HS 留 `codeTs`、余文发射 `gname` |
+
+> **为什么半拆要清另一侧**（#131）：半岛扫描件商品 11/12/13 各漏读一行，旧行为是「两值不齐 → 整体静默放弃」，于是 `13.44千克`（法定数量）留在主组件 `gqty` 里**冒充成交数量**，`100盒` 也整串进 `gqty` —— 语义错却看起来「有值」。
+> 现在：**拆得出多少拆多少，拆不出的部分一律标 `needs_review`**，宁可让人复核，也不静默输出语义错的值。两行都读到（标准形态）时**不加**这个标记。
 
 ## 重量
 
@@ -220,6 +224,7 @@ PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，�
 | 千克行同表成交数量取净重（#75） | 内置规则；千克词表仍是 `weight_units` | 否 |
 | 规格新形状（无 `\|` 无 `%`） | `fields.yaml` `value_rules.shapes` 的 `spec` 判定（`goods_map._SHAPES`） | 形状名已有则否；新形状名才是 |
 | 数量单位新写法（PCS/SET） | `goods_map.py` `_split_stacked_qty` 数量正则 | 是，一处 |
+| 法定/成交**只读到一侧**时怎么算（#131） | `goods_map.py` `_split_stacked_qty` / `_split_partial_stacked_qty`（按 `weight_units` 判归属 + 标 `stacked_qty_partial`） | 是，一处；复核原因名在 `_STACKED_QTY_REASON` |
 | 目的地前缀新码型 | `goods_map.py` `_split_district_codes` 正则 | 是，一处 |
 | 新的目的地/检验检疫字段 | `fields.yaml` `goods:` 新字段 | 否 |
 | 新合计叫法（如 GRAND TOTAL） | `goods_master.total_row_tokens` | 否 |

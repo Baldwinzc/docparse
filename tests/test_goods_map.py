@@ -840,6 +840,111 @@ def test_total_row_is_dropped_not_merged() -> None:
     assert all("合计" not in (item.value_of("gname") or "") for item in items)
 
 
+def _partial_stacked_qty(sheet, statutory: str | None, deal: str | None) -> None:
+    """叠列负例（#131）：三行一项，`数量及单位` 的法定行 / 成交行只给其一。
+
+    半岛扫描件形态：一项占三行，第 1 行法定数量、第 3 行成交数量。
+    `statutory` / `deal` 传 None 表示该行 OCR 漏读（格子留空）。
+    """
+    sheet["A1"] = "中华人民共和国海关出口货物报关单"
+    headers = [
+        ("A3", "项号"),
+        ("B3", "商品编号"),
+        ("C3", "商品名称及规格型号"),
+        ("D3", "数量及单位"),
+        ("E3", "单价/总价/币制"),
+    ]
+    for address, text in headers:
+        sheet[address] = text
+    sheet["A4"] = 1
+    sheet["B4"] = "1905310000"
+    sheet["C4"] = "示例黄油酥饼"
+    if statutory is not None:
+        sheet["D4"] = statutory
+    sheet["E4"] = 12.5
+    sheet["C5"] = "4|3|示例成分44%"
+    sheet["E5"] = 1250
+    sheet["C6"] = 0
+    if deal is not None:
+        sheet["D6"] = deal
+    sheet["E6"] = "美元"
+    for row in sheet.iter_rows(min_row=1, max_row=6, min_col=1, max_col=5):
+        for cell in row:
+            cell.border = _thin()
+
+
+def test_partial_stacked_qty_statutory_only_is_split_and_flagged() -> None:
+    """只读到法定行（重量单位）：拆进 qty1/unit1，成交侧清空并标复核（#131）。
+
+    旧行为是整串 `13.44千克` 留在 gqty 冒充成交数量，语义错且无提示。
+    """
+    document = parse_excel(
+        _workbook({"报关预录入单": lambda s: _partial_stacked_qty(s, "13.44千克", None)}),
+        file_id="partial-stat",
+        filename="partial-statutory.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["qty1"] == "13.44"
+    assert values["unit1"] == "千克"
+    # 成交侧没有读到 → 不能把法定行的值当成交数量留下
+    assert values.get("gqty", "") == ""
+    assert values.get("gunit", "") == ""
+    assert "stacked_qty_partial" in items[0].review_reasons
+
+
+def test_partial_stacked_qty_deal_only_keeps_correct_side_and_flags() -> None:
+    """只读到成交行（非重量单位）：gqty/gunit 填对，并标复核（#131）。"""
+    document = parse_excel(
+        _workbook({"报关预录入单": lambda s: _partial_stacked_qty(s, None, "100盒")}),
+        file_id="partial-deal",
+        filename="partial-deal.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    # 非重量单位 → 属成交侧，值本身是对的，保留但必须可复核
+    assert values["gqty"] == "100"
+    assert values["gunit"] == "盒"
+    assert values.get("qty1", "") == ""
+    assert values.get("unit1", "") == ""
+    assert "stacked_qty_partial" in items[0].review_reasons
+
+
+def test_complete_stacked_qty_is_not_flagged() -> None:
+    """两行都读到（标准形态）时不加复核标记，行为与 #84 一致（回归闸）。"""
+    document = parse_excel(
+        _workbook({"报关预录入单": lambda s: _partial_stacked_qty(s, "13.44千克", "100盒")}),
+        file_id="partial-full",
+        filename="complete.xlsx",
+    )
+    items = map_document_goods(document)
+    assert len(items) == 1
+    values = _values(items[0])
+    assert values["qty1"] == "13.44"
+    assert values["unit1"] == "千克"
+    assert values["gqty"] == "100"
+    assert values["gunit"] == "盒"
+    assert "stacked_qty_partial" not in items[0].review_reasons
+
+
+def test_partial_stacked_qty_reaches_declaration_reviews() -> None:
+    """复核标记要能从货表一路冒到 reviews 清单（#131 的「不静默」）。"""
+    from docparse.extraction.assemble import assemble_declaration, declaration_reviews
+
+    document = parse_excel(
+        _workbook({"报关预录入单": lambda s: _partial_stacked_qty(s, "13.44千克", None)}),
+        file_id="partial-review",
+        filename="partial-review.xlsx",
+    )
+    reviews = declaration_reviews(assemble_declaration(document))
+    paths = {review.path for review in reviews}
+    assert any(path.startswith("tdecGoodsitemsVoArr[0]") for path in paths)
+    reasons = [r for review in reviews for r in review.reasons]
+    assert "stacked_qty_partial" in reasons
+
+
 def test_total_label_outside_mapped_column_is_still_dropped() -> None:
     """合计落在无表头中间列（MXY 装箱单），物理行扫描也要拦住。"""
 
