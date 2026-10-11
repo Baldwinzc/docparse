@@ -23,16 +23,20 @@ VALUE_SHAPES = frozenset(
         "token",  # 纯词：无数字、≤4 字（'千克' / '盒' / '港币'）
         "spec",  # 规格形状：归一化后含 | 或 %
         "hs",  # 8–10 位税则号前缀
+        "district_pair",  # 境内目的地前缀双码（'（44536／440308）深圳盐田综合保税区'）
     }
 )
 VALUE_JOINS = frozenset({"first", "concat"})
+# 值侧输入归一（#133）：`wide`＝全角 ｜％ → 半角 |%。属输入预处理，不是字段语义。
+VALUE_FOLDS = frozenset({"wide"})
 
 
 class ValueRules(BaseModel):
     """货表 value 的认领 / 拆分规则（#122）。
 
-    只管三件事：这个字段的值**长什么样**（`shapes`）、能不能**从一串里被切出来**
-    （`splits`）、同一字段多行怎么合（`joins`）。
+    只管四件事：这个字段的值**长什么样**（`shapes`）、能不能**从一串里被切出来**
+    （`splits`）、**按捕获组把整串拆成多字段**（`split_pattern` + `split_to`）、
+    同一字段多行怎么合（`joins`）。
     值的**校验**仍走 `value_type` / `pattern`，两套边界见 docs/goods-map.md。
 
     形状名只是白名单，判定实现在 `extraction/goods_map.py` 的 `_SHAPES` 注册表里；
@@ -45,6 +49,16 @@ class ValueRules(BaseModel):
     # 允许被切出来的形状（子串拆分，如 '5.12千克' → '5.12' + '千克'）。空 = 不参与拆分。
     splits: list[str] = Field(default_factory=list)
     joins: str = "first"
+    # 整串按捕获组拆成多字段（#133）：正则的 group(1..n) 依次落到 split_to 各字段。
+    # 与 `shape_pattern` 分开 —— 这一项**产出值**，捕获组数必须与 split_to 对齐。
+    split_pattern: str | None = None
+    split_to: list[str] = Field(default_factory=list)
+    # 形状判定用的正则（#133）：覆盖 `_SHAPES` 注册表里该形状的内置实现。
+    # 只做「像不像」，不产值（`number_unit` / `spec` / `district_pair` 用它）。
+    shape_pattern: str | None = None
+    # 判定形状前的值侧归一（#133）。`wide` 把全角 ｜％ 折半角。
+    # 与 `_SHAPES` 判定分开：归一是「先折再看」，不改变字段语义。
+    fold: str | None = None
 
     @model_validator(mode="after")
     def check_rules(self) -> "ValueRules":
@@ -53,6 +67,27 @@ class ValueRules(BaseModel):
             raise ValueError(f"unknown value shape: {unknown}")
         if self.joins not in VALUE_JOINS:
             raise ValueError(f"unknown value joins: {self.joins}")
+        if self.fold is not None and self.fold not in VALUE_FOLDS:
+            raise ValueError(f"unknown value fold: {self.fold}")
+        for label, raw in (("split_pattern", self.split_pattern),
+                           ("shape_pattern", self.shape_pattern)):
+            if raw is None:
+                continue
+            try:
+                re.compile(raw)
+            except re.error as exc:  # pragma: no cover - 配置写错即报
+                raise ValueError(f"bad {label}: {exc}") from exc
+        if self.split_pattern:
+            if not self.split_to:
+                raise ValueError(f"{self.split_pattern!r} requires split_to")
+            groups = re.compile(self.split_pattern).groups
+            if groups != len(self.split_to):
+                raise ValueError(
+                    f"split_pattern has {groups} groups "
+                    f"but split_to has {len(self.split_to)}"
+                )
+        elif self.split_to:
+            raise ValueError("split_to requires split_pattern")
         return self
 
 

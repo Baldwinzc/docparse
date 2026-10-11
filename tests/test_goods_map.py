@@ -17,7 +17,9 @@ from docparse.extraction.goods_map import (
     _claims,
     _column_map,
     _compound_components,
+    _matches_shape,
     _ordered_components,
+    _spec_like,
     map_document_goods,
     map_sheet_goods,
 )
@@ -1507,3 +1509,71 @@ def test_bare_number_and_unit_stack_not_split() -> None:
     assert values["gunit"] == "千克"
     assert "qty1" not in values
     assert "unit1" not in values
+
+
+def test_shape_pattern_comes_from_yaml_not_code() -> None:
+    """可扩展性硬证据（#133）：换「数字+单位」口径只改 YAML，不碰 Python。
+
+    `gqty` 的判定正则声明在 `value_rules.shape_pattern`；把它放宽到 6 字单位后，
+    同一份判定代码立刻接受更长的单位 —— 说明口径真在 YAML 里。
+    """
+    schema = load_schema()
+    gqty = schema.field("gqty")
+    assert gqty is not None
+    assert gqty.value_rules.shape_pattern, "gqty 的正则应声明在 YAML"
+    # 默认口径：'48千克' 命中
+    assert _matches_shape(gqty, "48千克")
+    # 换口径（模拟改 YAML）：单位上限从 4 字放宽到 3 字反向验证——
+    # 用「4 字单位」证明默认接受，再用放宽后的正则证明口径确实来自 YAML。
+    four_char_unit = "48千克千克"  # 单位 4 字，默认 {1,4} 接受
+    assert _matches_shape(gqty, four_char_unit)
+    narrowed = gqty.model_copy(deep=True)
+    narrowed.value_rules = ValueRules(
+        shapes=["number", "number_unit"],
+        shape_pattern=r"^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,2})$",
+    )
+    # 同一份判定代码，只因 YAML 口径收紧就不再接受
+    assert not _matches_shape(narrowed, four_char_unit)
+    assert _matches_shape(narrowed, "48千克")
+
+
+def test_spec_fold_is_declared_and_drives_fullwidth() -> None:
+    """全角归一由 YAML `fold` 声明驱动（#133），不是硬编码在映射里。"""
+    gmodel = load_schema().field("gmodel")
+    assert gmodel is not None
+    assert gmodel.value_rules.fold == "wide"
+    # 半角与全角都判为规格形状
+    assert _spec_like("4|3|示例成分44%", None, gmodel)
+    assert _spec_like("4｜3｜示例成分44％", None, gmodel)
+    # 纯文字名称不算规格
+    assert not _spec_like("示例黄油酥饼", None, gmodel)
+
+
+def test_district_pair_split_is_declared_in_yaml() -> None:
+    """境内目的地双码的**分组正则与落点**都在 YAML（#133），且组数对齐。"""
+    spec = load_schema().field("districtCode")
+    assert spec is not None
+    rules = spec.value_rules
+    assert rules.shapes == ["district_pair"]
+    assert rules.split_pattern
+    assert rules.split_to == ["districtCode", "ciqDestCode"]
+    # 组数与 split_to 长度一致（loader 校验；这里再钉一次语义）
+    import re as _re
+
+    assert _re.compile(rules.split_pattern).groups == len(rules.split_to)
+    # 双码命中、单码不命中（当纳利 '(44199/)东莞/' 保持原值）
+    assert _re.compile(rules.split_pattern).match("（44536／440308）深圳盐田综合保税区")
+    assert not _re.compile(rules.split_pattern).match("(44199/)东莞/")
+
+
+def test_value_rules_reject_mismatched_split_groups() -> None:
+    """配置写错要立刻报：split_pattern 组数与 split_to 不齐 → 构造即失败。"""
+    with pytest.raises(ValueError, match="groups"):
+        ValueRules(
+            split_pattern=r"^(\d+)/(\d+)$",
+            split_to=["districtCode"],  # 只有 1 个落点，正则却有 2 组
+        )
+    with pytest.raises(ValueError, match="requires split_to"):
+        ValueRules(split_pattern=r"^(\d+)$")
+    with pytest.raises(ValueError, match="unknown value fold"):
+        ValueRules(fold="nope")
