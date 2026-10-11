@@ -828,9 +828,13 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [申报要素, 规格型号, 商品规格]
-    value_rules: {shapes: [spec], joins: concat}
+    value_rules:
+      shapes: [spec]
+      joins: concat
+      fold: wide
+      shape_pattern: '[|%]'
     goods_map: raw_review
-    notes: 原文进本字段。0|0|... 规范编码本层不编，标 needs_review。
+    notes: 原文进本字段。0|0|... 规范编码本层不编，标 needs_review。规格形状判定前先做全角归一（fold 取 wide，｜％ → |%），判定正则可由 shape_pattern 覆盖（#133）。
 
   - name: brand
     display_name: 品牌
@@ -877,8 +881,10 @@ goods:
     value_type: number
     sources: [customs_declaration, packing_list, invoice]
     anchors: [出货数量, 成交数量, 数量, Quantity, Q'ty, Qty, 申报数量]
-    value_rules: {shapes: [number, number_unit]}
-    notes: 海关商品表优先。别名交 #13。千克行同表有净重时成交数量取净重（#75）；跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。
+    value_rules:
+      shapes: [number, number_unit]
+      shape_pattern: '^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,4})$'
+    notes: 海关商品表优先。别名交 #13。千克行同表有净重时成交数量取净重（#75）；跨表补数量，候选值须与净重一致（goods_master 容差）。申报数量为通达2 叫法（#66）。「数字+单位」粘连形态（'48千克'）的正则声明在 shape_pattern（#133），换写法不改 Python。
 
   - name: gunit
     display_name: 成交单位
@@ -886,7 +892,9 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [计价单位, 成交单位, 申报单位, 单位, 申报计量单位]
-    value_rules: {shapes: [token, number_unit]}
+    value_rules:
+      shapes: [token, number_unit]
+      shape_pattern: '^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,4})$'
     code_table: 计量单位
     notes: 名称转码交 #14。映射层可认「单位」列；layout 词表仍不加，防框表误伤。申报计量单位为通达2 叫法（#66）。
 
@@ -952,8 +960,12 @@ goods:
     layout: table_col
     sources: [customs_declaration]
     anchors: [境内货源地, 境内目的地]
+    value_rules:
+      shapes: [district_pair]
+      split_pattern: '^[（(]\s*(\d{4,6})\s*[／/]\s*(\d{4,6})\s*[)）]'
+      split_to: [districtCode, ciqDestCode]
     code_table: 国内地区
-    notes: 出口为境内货源地。标准报关单值形如「（区划码／CIQ码）地名」，前缀两码都非空时第一码进本字段、第二码进 ciqDestCode（#84）；单码前缀保持原值。
+    notes: 出口为境内货源地。标准报关单值形如「（区划码／CIQ码）地名」，前缀两码都非空时第一码进本字段、第二码进 ciqDestCode（#84）；单码前缀保持原值（当纳利 '(44199/)东莞/'）。分组正则与落点声明在 value_rules.split_pattern / split_to（#133），改码型不改 Python。
 
   - name: ciqDestCode
     display_name: 目的地检验检疫代码

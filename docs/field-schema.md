@@ -10,7 +10,7 @@
 
 目录可继续加字段，不锁死。同义词、列名别名（毛重 / G.W.、出货数量）见 [layout-vocab.md](layout-vocab.md)。
 
-**字段上还有一类声明：货表 value 的认领 / 拆分规则**（`value_rules: {shapes, splits, joins}`，#122）。它只回答「复核列（一个表头拼了多个字段，如 `商品名称及规格型号` / `单价/总价/币制`）里，这个格子的值该落到哪个字段、能不能从一串里切开（`5.12千克` → 数量 + 单位）、同字段多行怎么合」。与 `value_type` / `pattern` 的**校验**职责分开，语义与形状名见 [goods-map.md](goods-map.md) 的「value 规则声明在哪」。
+**字段上还有一类声明：货表 value 的认领 / 拆分规则**（`value_rules: {shapes, splits, shape_pattern, split_pattern, split_to, fold, joins}`，#122 / #133）。它只回答「复核列（一个表头拼了多个字段，如 `商品名称及规格型号` / `单价/总价/币制`）里，这个格子的值该落到哪个字段、能不能从一串里切开（`5.12千克` → 数量 + 单位）、能不能按捕获组拆成多字段（`（44536／440308）地名` → 两码）、判定前要不要先做全角归一、同字段多行怎么合」。与 `value_type` / `pattern` 的**校验**职责分开，语义与形状名见 [goods-map.md](goods-map.md) 的「value 规则声明在哪」。
 
 ## 版面来源
 

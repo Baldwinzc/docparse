@@ -98,20 +98,34 @@ Sheet.tables + consume
 
 命名形状（判定实现在 `goods_map._SHAPES`，白名单在 `loader.VALUE_SHAPES`）：
 
-| 形状 | 判定 |
-|---|---|
-| `number` | 纯数字 |
-| `number_unit` | 数字 + 短单位（`48千克` / `240盒`） |
-| `token` | 纯词：无数字、≤4 字（`千克` / `盒` / `港币`） |
-| `spec` | 规格形状：归一化（全角 `｜％`）后含 `\|` 或 `%` |
-| `hs` | 8–10 位税则号前缀 |
-| `text` | 任意非空文本（慎用：谁都能匹配） |
+| 形状 | 判定 | 可覆盖 |
+|---|---|---|
+| `number` | 纯数字 | — |
+| `number_unit` | 数字 + 短单位（`48千克` / `240盒`） | `shape_pattern` |
+| `token` | 纯词：无数字、≤4 字（`千克` / `盒` / `港币`） | — |
+| `spec` | 规格形状：归一化（全角 `｜％`）后含 `\|` 或 `%` | `shape_pattern` |
+| `hs` | 8–10 位税则号前缀 | — |
+| `district_pair` | 境内目的地前缀双码（`（44536／440308）深圳…`） | `split_pattern` |
+| `text` | 任意非空文本（慎用：谁都能匹配） | — |
 
 **子串拆分**（`_split_by_shapes`）：整串没有任何组件匹配时，找一个切点让前缀 / 后缀各自命中**不同**组件、且两侧各只命中一个；否则不拆。例：`gqty` 只声明 `shapes: [number]` + `splits: [number]`、`gunit` 只声明 `shapes: [token]` + `splits: [token]` 时，`5.12千克` → `gqty=5.12` + `gunit=千克`。**没声明 `splits` 就绝不拆。**
 
+### 六个槽位（#133：形状判定的真值搬进 YAML）
+
+| 槽位 | 作用 | 例 |
+|---|---|---|
+| `shapes` | 这个字段的值**长什么样**（正向判定，可被认领） | `gmodel: [spec]` |
+| `splits` | 能不能**从一串里被切出来**（子串拆分） | `gqty: [number]` |
+| `shape_pattern` | 覆盖该形状判定的**正则**（只做「像不像」，不产值） | `gqty` 的「数字+单位」 |
+| `split_pattern` + `split_to` | 按**捕获组**把整串拆成多字段（组数须与 `split_to` 对齐） | `districtCode` → `[districtCode, ciqDestCode]` |
+| `fold` | 判定前的**值侧归一**（当前只有 `wide`：全角 `｜％` → 半角） | `gmodel: wide` |
+| `joins` | 同一字段多行怎么合（`first` / `concat`） | `gmodel: concat` |
+
+> **`shape_pattern` 与 `split_pattern` 别混**：前者只回答「像不像」（判定失败只影响认领），后者**产出值**（捕获组按序落 `split_to`）。写错组数 loader 直接报错，不留到跑数据才炸。
+
 > **边界**：`value_rules` 只管**认领 / 拆分**；值的**校验**仍走 `value_type` / `pattern`（`extraction/fields.py`、`validate.py`）。两套不要互相替代。
 >
-> **注**：半岛样本的 `数量及单位` 目前**没有**开拆分（`gqty` 的 `shapes` 含 `number_unit`，`splits` 为空）—— 那一列的法定 / 成交语义由 `_split_stacked_qty` 按重量单位判定（业务规则，见下节）。要让 `48千克` 在那一列也先拆成 `数量 + 单位`，得连法定/成交那条业务规则一起改，属另一件事。
+> **注**：半岛样本的 `数量及单位` 目前**没有**开 `splits`（`gqty` 的 `shapes` 含 `number_unit`，`splits` 为空）—— 那一列的法定 / 成交语义由 `_split_stacked_qty` 按重量单位判定（业务规则，见下节）。要让 `48千克` 在那一列也先拆成 `数量 + 单位`，得连法定/成交那条业务规则一起改，属另一件事。
 
 配套两处：
 
@@ -222,10 +236,11 @@ PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，�
 | 哪些列要过数量闸（数量链） | `goods_master.gated_fields` | 否 |
 | 千克行数量补值须≈净重、毛重补值须≥净重 | 内置规则，容差同 `qty_*` | 否 |
 | 千克行同表成交数量取净重（#75） | 内置规则；千克词表仍是 `weight_units` | 否 |
-| 规格新形状（无 `\|` 无 `%`） | `fields.yaml` `value_rules.shapes` 的 `spec` 判定（`goods_map._SHAPES`） | 形状名已有则否；新形状名才是 |
-| 数量单位新写法（PCS/SET） | `goods_map.py` `_split_stacked_qty` 数量正则 | 是，一处 |
+| 规格新形状（无 `\|` 无 `%`） | `fields.yaml` `gmodel.value_rules.shape_pattern`（配 `fold: wide`） | **否**（#133 起） |
+| 数量单位新写法（PCS/SET） | `fields.yaml` `gqty` / `gunit` 的 `value_rules.shape_pattern` | **否**（#133 起） |
+| 目的地前缀新码型 | `fields.yaml` `districtCode.value_rules.split_pattern` + `split_to` | **否**（#133 起） |
+| 全角/半角写法（`｜％` 之外还有别的） | `textnorm.fold_wide` 的映射表 + 字段上声明 `value_rules.fold: wide` | 映射表一处（归一是字符级预处理） |
 | 法定/成交**只读到一侧**时怎么算（#131） | `goods_map.py` `_split_stacked_qty` / `_split_partial_stacked_qty`（按 `weight_units` 判归属 + 标 `stacked_qty_partial`） | 是，一处；复核原因名在 `_STACKED_QTY_REASON` |
-| 目的地前缀新码型 | `goods_map.py` `_split_district_codes` 正则 | 是，一处 |
 | 新的目的地/检验检疫字段 | `fields.yaml` `goods:` 新字段 | 否 |
 | 新合计叫法（如 GRAND TOTAL） | `goods_master.total_row_tokens` | 否 |
 | 同角色多页不要接续（回到按行序补空） | `goods_master.concat_same_role: false` | 否 |
@@ -233,10 +248,12 @@ PDF 草单一页一张伪 sheet。第 1 页项号 1–10、第 2 页 11–19，�
 | 三行以上叠列（四行一项） | 续行判定天然支持，验收补样本 | 否 |
 | 新的**复合列**（一个表头含多个字段） | `fields.yaml` 各组件字段的 `anchors` + 各自 `value_rules.shapes` —— 词表已能判出，`_compound_components` 自动登记 | 否 |
 | 复合列要把一串**切开**（`5.12千克`） | `fields.yaml` 该字段的 `value_rules.splits` | 否 |
+| 一串按**捕获组**拆成多字段（`（44536／440308）地名`） | `fields.yaml` 该字段的 `value_rules.split_pattern` + `split_to` | **否**（#133 起） |
 | 同字段多行要拼接而不是只取一个 | `fields.yaml` `value_rules.joins: concat` | 否 |
-| 要加**新的形状名**（现有 6 个不够） | `loader.VALUE_SHAPES` 白名单 + `goods_map._SHAPES` 判定 | 是，两处 |
+| 要加**新的形状名**（现有 7 个不够） | `loader.VALUE_SHAPES` 白名单 + `goods_map._SHAPES` 判定 | 是，两处 |
 | 还要认别的**身份列**（除项号 / 商品编号外） | `goods_map.py` `_CONTINUATION_IDENTITY` | 是，一处 |
-| 一列变两字段（新的稳拆） | 新 `goods_map` 值 + 拆分函数 | 是，通用规则，不按公司 |
+| 一列变两字段，且**已有形状名**能判 | `fields.yaml` 该字段 `split_pattern` + `split_to` | 否 |
+| 一列变两字段，需**新形状名** | 同「新的形状名」+ `fields.yaml` 声明 | 是（形状判定两处） |
 | 谁覆盖谁（表头件数 vs 货表加总） | `fields.yaml` `assembly` / [assemble.md](assemble.md) | 否 |
 | 名称要变成海关 code | #14 / #27 / #19 | 否 |
 | 申报要素要编 `0\|0\|...` | 以后另开；本层只留原文 | 视规则 |

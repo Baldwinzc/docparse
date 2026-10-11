@@ -72,6 +72,8 @@ sheet 角色（#16 / #65）：`schema/sheet_roles.yaml` + `extraction/sheet_role
 
 商品映射（#18 / #48 / #52 / #68 / #75）：`extraction/goods_map.py` 吃已拆 `tables`，按 `fields.yaml` 的 `goods.anchors` / `goods_map` / `goods_master` 写成货行。先选主货表；跨表按行序对齐，数量对上才补空，主表已有值不覆盖。有项号列的海关表：无税号且项号空/0/同号的行并入上一件；合计行按 `total_row_tokens` 整行丢弃。`auxiliary` / `unknown` 不读。重量未区分当净重；没有毛重列则毛重空着。千克行同时有数量和净重时，成交数量取净重。申报要素原文进 `gmodel`，不编 `0|0|...`。箱数不加字段。本地对眼：`python -m docparse.cli goods file.xlsx`。见 [goods-map.md](goods-map.md)。
 
+**形状判定的真值在 YAML**（#133）：货表里原先硬编码的业务正则已搬进 `fields.yaml` 的 `value_rules` —— 数量+单位口径走 `shape_pattern`、境内目的地双码走 `split_pattern` + `split_to`、全角归一走 `fold: wide`（归一本体在 `schema/textnorm.py::fold_wide`，属字符级预处理）。`goods_map.py` 只留「形状名 → 判定」的注册表与缺省正则；换叫法 / 换码型 / 换单位写法都不用动 Python。新增**形状名**才需要同时改 `loader.VALUE_SHAPES` 与 `goods_map._SHAPES`。
+
 整单组装（#19）：`extraction/assemble.py` 按 `fields.yaml` 的 `assembly` 收成一张报关单。有 `draft` 抄草单，商业单据只补空并核件毛净；无草单只抄能确定的商业事实，`customs_only` 空着复核。名称转 code；转不出留原文。`agent*` 只来自调用参数。表头只有净重时视同重量，不抄进毛重。本地对眼：`python -m docparse.cli declare file.xlsx`。见 [assemble.md](assemble.md)。
 
 FastAPI 交单（#21 / #86）：`POST /v1/jobs` 与 `cli declare` 走同一条 pipeline，响应对眼用的 Job。合单走 `POST /v1/declare`，出口在 `api/export_dec.py`，策略在 `fields.yaml` `declare_export`。调用方参数跟 `caller_params` 走，不写死四个 agent。见 [api.md](api.md)。

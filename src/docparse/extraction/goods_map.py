@@ -9,17 +9,17 @@ from copy import deepcopy
 from docparse.domain.fields import ExtractedField, FieldStatus, GoodsItem
 from docparse.domain.ir import DocumentIR, Evidence, Sheet, Table
 from docparse.schema.loader import FieldSpec, Schema, load_schema
-from docparse.schema.textnorm import fold_key, fold_spaced
+from docparse.schema.textnorm import fold_key, fold_spaced, fold_wide
 
+# 税则号前缀判定（#133）：作为「HS 形状」的底层实现保留 —— 形状名的**语义**
+# （`shapes: [hs]`）已声明在 `fields.yaml`，这里只是 `_SHAPES` 注册表的判定函数。
+# 换码长 / 换前缀形态仍是改这一处。
 _LEADING_HS = re.compile(r"^(\d{8,10})")
-# 数量+单位粘连值（#84 标准报关单「数量及单位」复合列）：'48千克' / '240盒'。
-_QTY_UNIT = re.compile(r"^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,4})$")
-# 规格形状（#84）：全角 ｜／％ 归一后含 | 或 % 即规格行；纯文字名称换行不算。
-_SPEC_SHAPE = re.compile(r"[|%]")
-_WIDTH_FOLD = str.maketrans("｜％", "|%")
-# 境内目的地前缀双码（#84）：'（44536／440308）深圳盐田综合保税区'。
-# 两码都非空才拆；当纳利 '(44199/)东莞/' 第二码空，保持原值。
-_DISTRICT_CODES = re.compile(r"^[（(]\s*(\d{4,6})\s*[／/]\s*(\d{4,6})\s*[)）]")
+# 形状没在 YAML 声明正则时的空匹配器：判定恒假（该形状不可用，不猜）。
+_NEVER = re.compile(r"(?!)")
+# 规格形状的默认判定（#133）：归一化后含 | 或 %。真值可被
+# `gmodel.value_rules.shape_pattern` 覆盖 —— 形状的语义归 YAML，这里只是缺省实现。
+_DEFAULT_SPEC_SHAPE = re.compile(r"[|%]")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
 # 「数量及单位」叠列只读到一行（#131）：拆出能拆的，剩下的标复核，
@@ -35,16 +35,42 @@ _CONTINUATION_IDENTITY = ("gno", "codeTs")
 #
 # 认领规则本身**声明在 `fields.yaml` 的 `value_rules`**（字段级）；这里只放
 # 「形状名 → 判定」的注册表。新增字段 / 新复合列只改 YAML；新增**形状**才动这里。
+#
+# 判定函数收 `spec`（#133）：形状的**语义**在 YAML，但同一个形状名在不同字段上
+# 可以带不同的值侧归一（`value_rules.fold`），所以判定入口要能看到字段声明。
+# 数量+单位粘连（'48千克' / '240盒'）的正则默认值在 `_DEFAULT_QTY_UNIT`；
+# 字段可以用 `value_rules.shape_pattern` 覆盖判定口径。
+_DEFAULT_QTY_UNIT = re.compile(r"^(\d[\d,]*(?:\.\d+)?)\s*([^\d\s]{1,4})$")
 _SHAPES = {
-    "text": lambda raw: bool(raw.strip()),
-    "number": lambda raw: _as_number(raw) is not None,
-    "number_unit": lambda raw: _QTY_UNIT.match(raw) is not None,
-    "token": lambda raw: bool(raw.strip())
+    "text": lambda raw, spec: bool(raw.strip()),
+    "number": lambda raw, spec: _as_number(raw) is not None,
+    "number_unit": lambda raw, spec: _qty_unit_pattern(spec).match(raw) is not None,
+    "token": lambda raw, spec: bool(raw.strip())
     and len(raw.strip()) <= 4
     and not any(ch.isdigit() for ch in raw),
-    "spec": lambda raw: _spec_like(raw, None),
-    "hs": lambda raw: _LEADING_HS.match(raw) is not None,
+    "spec": lambda raw, spec: _spec_like(raw, None),
+    "hs": lambda raw, spec: _LEADING_HS.match(raw) is not None,
+    "district_pair": lambda raw, spec: _district_pattern(spec).match(raw) is not None,
 }
+
+
+def _prepared(spec: FieldSpec, raw: str) -> str:
+    """形状判定前的值侧归一（#133）。`fold: wide` → 全角 ｜％ 折半角。"""
+    return fold_wide(raw) if spec.value_rules.fold == "wide" else raw
+
+
+def _qty_unit_pattern(spec: FieldSpec) -> re.Pattern[str]:
+    """本字段的「数字+单位」正则：YAML `shape_pattern` 优先，否则内置默认。"""
+    declared = spec.value_rules.shape_pattern
+    if declared:
+        return re.compile(declared)
+    return _DEFAULT_QTY_UNIT
+
+
+def _district_pattern(spec: FieldSpec) -> re.Pattern[str]:
+    """境内目的地双码前缀正则：YAML `split_pattern` 优先，否则不匹配。"""
+    declared = spec.value_rules.split_pattern
+    return re.compile(declared) if declared else _NEVER
 # PDF 伪 sheet 名是页号（#62 reconstruct）。xlsx 草单名不是数字，不接续。
 _PAGE_SHEET_NAME = re.compile(r"^(sheet\s*\d+|\d+)$", re.IGNORECASE)
 
@@ -285,13 +311,15 @@ def _compound_components(
 
 
 def _matches_shape(spec: FieldSpec, raw: str) -> bool:
-    """该字段的声明形状能不能接受这个值（`value_rules.shapes`）。"""
-    return any(_SHAPES[name](raw) for name in spec.value_rules.shapes)
+    """该字段的声明形状能不能接受这个值（`value_rules.shapes`）。先过值侧归一。"""
+    prepared = _prepared(spec, raw)
+    return any(_SHAPES[name](prepared, spec) for name in spec.value_rules.shapes)
 
 
 def _can_split_out(spec: FieldSpec, piece: str) -> bool:
     """这个片段能不能**从一串里被切出来**给该字段（`value_rules.splits`）。"""
-    return any(_SHAPES[name](piece) for name in spec.value_rules.splits)
+    prepared = _prepared(spec, piece)
+    return any(_SHAPES[name](prepared, spec) for name in spec.value_rules.splits)
 
 
 def _claims(raw: str, specs: Sequence[FieldSpec]) -> list[tuple[FieldSpec, str]]:
@@ -556,11 +584,24 @@ def _split_stacked_qty(item: GoodsItem, schema: Schema) -> None:
       - 单行且是重量单位 → 归法定侧（qty1/unit1）；
       - 单行且非重量单位 → 归成交侧（gqty/gunit）；
       - 两行都没读到（值本身不是「数字+单位」）→ 不动，交回上游标记。
+
+    判定口径（#133）：正则取自 `gqty` / `gunit` 的 `value_rules.shape_pattern`，
+    没声明则用内置缺省 —— 换数量/单位写法改 YAML，不改这里。
     """
     qty_field = item.fields.get("gqty")
     unit_field = item.fields.get("gunit")
-    qty_match = _QTY_UNIT.match((qty_field.value if qty_field else "") or "")
-    unit_match = _QTY_UNIT.match((unit_field.value if unit_field else "") or "")
+    qty_spec = schema.field("gqty")
+    unit_spec = schema.field("gunit")
+    qty_match = (
+        _qty_unit_pattern(qty_spec).match((qty_field.value if qty_field else "") or "")
+        if qty_spec is not None
+        else None
+    )
+    unit_match = (
+        _qty_unit_pattern(unit_spec).match((unit_field.value if unit_field else "") or "")
+        if unit_spec is not None
+        else None
+    )
     if qty_field is None and unit_field is None:
         return
     if qty_match is None and unit_match is None:
@@ -670,20 +711,33 @@ def _split_district_codes(item: GoodsItem, schema: Schema) -> None:
     """境内目的地前缀双码（#84）：'（44536／440308）地名' → districtCode + ciqDestCode。
 
     两码都非空才拆；单码前缀（当纳利 '(44199/)东莞/'）保持原值。
+
+    声明式（#133）：分组正则与落点取自字段的
+    `value_rules.split_pattern` + `value_rules.split_to`（捕获组按序落字段）。
+    没声明 `split_pattern` 就不拆 —— 与 `splits` 的「没声明就绝不拆」同口径。
     """
     district = item.fields.get("districtCode")
-    raw = (district.value if district else "") or ""
-    match = _DISTRICT_CODES.match(raw.strip())
-    if district is None or match is None:
+    if district is None:
         return
-    ciq_spec = schema.field("ciqDestCode")
-    if ciq_spec is None:
+    spec = schema.field("districtCode")
+    if spec is None or not spec.value_rules.split_pattern:
         return
+    raw = (district.value or "").strip()
+    match = re.compile(spec.value_rules.split_pattern).match(raw)
+    if match is None:
+        return
+    targets = spec.value_rules.split_to
+    # 第一组留在原字段；其余组依次发射到 split_to 声明的字段。
     district.value = match.group(1)
     district.normalized_value = match.group(1)
-    item.fields["ciqDestCode"] = _retarget(district, "ciqDestCode", ciq_spec.display_name)
-    item.fields["ciqDestCode"].value = match.group(2)
-    item.fields["ciqDestCode"].normalized_value = match.group(2)
+    for index, target_name in enumerate(targets[1:], start=2):
+        target_spec = schema.field(target_name)
+        if target_spec is None:
+            continue
+        emitted = _retarget(district, target_name, target_spec.display_name)
+        emitted.value = match.group(index)
+        emitted.normalized_value = match.group(index)
+        item.fields[target_name] = emitted
 
 
 def _is_total_row(
@@ -835,11 +889,18 @@ def _route_leftovers(
             master.fields[target.name] = _retarget(field, target.name, target.display_name)
 
 
-def _spec_like(text: str, existing_gmodel: str | None) -> bool:
-    """规格形状：归一化（｜→|、％→%）后含 | 或 %；或 gmodel 已有值（续行拼接）。"""
+def _spec_like(text: str, existing_gmodel: str | None, spec: FieldSpec | None = None) -> bool:
+    """规格形状：归一化（｜→|、％→%）后含 | 或 %；或 gmodel 已有值（续行拼接）。
+
+    归一走 `textnorm.fold_wide`（#133：输入归一，与字段语义无关）；
+    判定正则默认 `[|%]`，可由 `gmodel.value_rules.shape_pattern` 覆盖。
+    """
     if (existing_gmodel or "").strip():
         return True
-    return _SPEC_SHAPE.search(text.translate(_WIDTH_FOLD)) is not None
+    pattern = _DEFAULT_SPEC_SHAPE
+    if spec is not None and spec.value_rules.shape_pattern:
+        pattern = re.compile(spec.value_rules.shape_pattern)
+    return pattern.search(fold_wide(text)) is not None
 
 
 def _retarget(field: ExtractedField, name: str, display_name: str) -> ExtractedField:
