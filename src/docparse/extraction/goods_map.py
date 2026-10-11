@@ -22,6 +22,9 @@ _WIDTH_FOLD = str.maketrans("｜％", "|%")
 _DISTRICT_CODES = re.compile(r"^[（(]\s*(\d{4,6})\s*[／/]\s*(\d{4,6})\s*[)）]")
 _SKIP_CONSUME = frozenset({"exclude"})
 _GOODS_LAYOUTS = frozenset({"table_col"})
+# 「数量及单位」叠列只读到一行（#131）：拆出能拆的，剩下的标复核，
+# 不让粘连串冒充成交数量静默过关。
+_STACKED_QTY_REASON = "stacked_qty_partial"
 # 续行判定的身份列（#62）：项号与商品编号任一存在，才谈得上「这行有没有身份」。
 # 不含 gname —— 申报要素就落在品名列，续行同样有 gname。
 _CONTINUATION_IDENTITY = ("gno", "codeTs")
@@ -545,12 +548,29 @@ def _split_stacked_qty(item: GoodsItem, schema: Schema) -> None:
     形状闸：gqty 值带单位后缀、gunit 值是「数字+单位」——当纳利（#68）
     是「裸数字+纯单位」堆叠，形状不符不动。重量单位方是法定数量
     （qty1/unit1，unit1 千克时同值补 customNetWt），另一方是成交数量。
+
+    容错（#131）：OCR 可能只读到其中一行（半岛扫描件商品 11/12/13）。
+    旧行为是「两值不齐就整体静默放弃」，结果粘连串留在主组件 gqty 里冒充
+    成交数量 —— 语义错且无提示。现在改为**拆得出多少拆多少，拆不出/不全的
+    一律标 needs_review**：
+      - 单行且是重量单位 → 归法定侧（qty1/unit1）；
+      - 单行且非重量单位 → 归成交侧（gqty/gunit）；
+      - 两行都没读到（值本身不是「数字+单位」）→ 不动，交回上游标记。
     """
     qty_field = item.fields.get("gqty")
     unit_field = item.fields.get("gunit")
     qty_match = _QTY_UNIT.match((qty_field.value if qty_field else "") or "")
     unit_match = _QTY_UNIT.match((unit_field.value if unit_field else "") or "")
-    if qty_field is None or qty_match is None or unit_field is None or unit_match is None:
+    if qty_field is None and unit_field is None:
+        return
+    if qty_match is None and unit_match is None:
+        return
+    if qty_match is None or unit_match is None:
+        # 缺的那一侧可能压根没建字段（格子空 → 不建 ExtractedField，#131）。
+        # 主组件是 gqty，缺它就没法拆，原地标复核；缺 gunit 则用 gqty 兜底建。
+        anchor = qty_field if qty_field is not None else unit_field
+        assert anchor is not None
+        _split_partial_stacked_qty(item, schema, anchor, qty_match, unit_match)
         return
     statutory, deal = qty_match, unit_match
     statutory_is_weight = _is_weight_unit(statutory.group(2), schema)
@@ -584,6 +604,66 @@ def _split_stacked_qty(item: GoodsItem, schema: Schema) -> None:
     qty_field.normalized_value = deal.group(1)
     unit_field.value = deal.group(2)
     unit_field.normalized_value = deal.group(2)
+
+
+def _split_partial_stacked_qty(
+    item: GoodsItem,
+    schema: Schema,
+    anchor: ExtractedField,
+    qty_match: re.Match[str] | None,
+    unit_match: re.Match[str] | None,
+) -> None:
+    """叠列只读到一行（#131）：按单位判归属填一侧，另一侧清空，整组标复核。
+
+    能判定的那行按重量单位归位（重量 → 法定 qty1/unit1，非重量 → 成交 gqty/gunit）；
+    缺 gunit 字段时按需补建（格子空 → 上游不建字段）。判不出归属的口径下不清值，
+    只标复核，不制造新错误。
+    """
+    present = qty_match or unit_match
+    assert present is not None  # 调用方已保证至少一侧命中
+    quantity, unit = present.group(1), present.group(2)
+    is_weight = _is_weight_unit(unit, schema)
+    if is_weight:
+        # 法定侧：qty1/unit1（+ 同值补 customNetWt，与完整拆分同口径）。
+        qty1_spec = schema.field("qty1")
+        unit1_spec = schema.field("unit1")
+        net_spec = schema.field("customNetWt")
+        if qty1_spec is not None:
+            item.fields["qty1"] = _retarget(
+                anchor, "qty1", qty1_spec.display_name
+            )
+            item.fields["qty1"].value = quantity
+            item.fields["qty1"].normalized_value = quantity
+        if unit1_spec is not None:
+            item.fields["unit1"] = _retarget(
+                anchor, "unit1", unit1_spec.display_name
+            )
+            item.fields["unit1"].value = unit
+            item.fields["unit1"].normalized_value = unit
+        if net_spec is not None and not (item.value_of("customNetWt") or "").strip():
+            item.fields["customNetWt"] = _retarget(
+                anchor, "customNetWt", net_spec.display_name
+            )
+            item.fields["customNetWt"].value = quantity
+            item.fields["customNetWt"].normalized_value = quantity
+        # 成交侧没读到，清掉以免法定行的值被当成成交数量。
+        _clear_value(anchor)
+    else:
+        # 成交侧：gqty/gunit，主组件 gqty 已是这个值，只需补出单位字段。
+        anchor.value = quantity
+        anchor.normalized_value = quantity
+        unit_spec = schema.field("gunit")
+        if unit_spec is not None:
+            item.fields["gunit"] = _retarget(anchor, "gunit", unit_spec.display_name)
+            item.fields["gunit"].value = unit
+            item.fields["gunit"].normalized_value = unit
+    item.review_reasons.append(_STACKED_QTY_REASON)
+
+
+def _clear_value(field: ExtractedField) -> None:
+    """把字段值清空但保留证据：值没了要留下「原本读到过什么」的线索。"""
+    field.value = ""
+    field.normalized_value = ""
 
 
 def _split_district_codes(item: GoodsItem, schema: Schema) -> None:
